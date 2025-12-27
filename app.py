@@ -20,7 +20,6 @@ def set_cute_theme():
     <style>
     .stApp {
         background-image: url('https://i.pinimg.com/1200x/a5/60/17/a5601713b0833fc0321076a49899dca5.jpg');
-        color: #fff;
     }
     .stChatMessage {
         background-color: rgba(255, 255, 255, 0.15);
