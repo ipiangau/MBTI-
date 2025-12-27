@@ -19,8 +19,7 @@ def set_cute_theme():
     st.markdown("""
     <style>
     .stApp {
-        background-color: #3B6255;
-        background-image: linear-gradient(180deg, #3B6255 0%, #1a2e1a 100%);
+        background-image: url('https://i.pinimg.com/1200x/a5/60/17/a5601713b0833fc0321076a49899dca5.jpg');
         color: #fff;
     }
     .stChatMessage {
@@ -53,6 +52,10 @@ def set_cute_theme():
         color: #fff; pointer-events: none; z-index: 9999;
         font-size: 1.5em;
     }
+    @keyframes scroll {{
+            0% {{ background-position: 0 0; }}
+            100% {{ background-position: 100% 100%; }}
+        }}
     </style>
     <div class="snowflake" style="left:10%">❄️</div>
     <div class="snowflake" style="left:30%; animation-delay:2s">❅</div>
@@ -67,7 +70,11 @@ set_cute_theme()
 # 2. Sidebar Settings
 # ==========================================
 with st.sidebar:
-    st.image("https://img.icons8.com/color/96/christmas-penguin.png", width=80)
+    st.image(
+    [
+        "https://i.pinimg.com/736x/3d/39/c3/3d39c364105ac84dfc91b6f367259f1a.jpg",
+        "https://i.pinimg.com/736x/27/63/6b/27636ba121aba11e515165d999b27a5c.jpg"
+    ], width=80)
     st.header("⚙️ North Pole Settings")
     connection_type = st.radio("AI Helper", ["Remote NCKU", "Local Ollama"])
 
@@ -82,7 +89,7 @@ with st.sidebar:
         model_name = "llama3.2:1b"
 
     st.markdown("---")
-    if st.button("🗑️ Start Fresh"):
+    if st.button("🗑️ Refresh"):
         st.session_state.clear()
         st.rerun()
 
@@ -98,7 +105,8 @@ if "charts_data" not in st.session_state: st.session_state.charts_data = None
 # ==========================================
 # 4. Main UI
 # ==========================================
-st.title("🎅 AI MBTI Workshop")
+st.image("https://parade.com/.image/w_1080,q_auto:good,c_limit/MTkwNTgxMDYyNDUyNTIwODI4/santa-facts-jpg.jpg?arena_f_auto", width=150)
+st.title("AI MBTI")
 st.markdown("### *Analyzing personalities, one chat at a time!*")
 
 uploaded_file = st.file_uploader("📂 Drop your chat file here", type=['txt'])
