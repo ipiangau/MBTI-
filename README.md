@@ -4,8 +4,6 @@
 
 A Streamlit-powered application that transforms your LINE chat history into deep personality insights using Large Language Models (LLMs). Features a festive "North Pole" theme, interactive visualizations, and an AI Elf agent for chat analysis.
 
-![Demo Preview](image_e3ec95.jpg)
-
 ## 🛠️ Installation
 
 ### Prerequisites
