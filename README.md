@@ -54,10 +54,14 @@ streamlit run app.py
 ```
 ### Project Structure
 ```bash
-app.py: The main entry point. Handles the Streamlit UI, theme (CSS/Snowflakes), and session state management.
-agent.py: Handles logic for calling LLMs (Ollama/Remote), extracting strict JSON for analysis, and generating chat responses/fashion advice.
-mbti.py: Contains the parsing logic for LINE chat files (parse_line_chat_dynamic) and prompt engineering helpers.
-charts.py: Uses Plotly to generate the Spectrum, Bar, and Radar charts based on the analysis data.
+app.py:
+  The main entry point. Handles the Streamlit UI, theme (CSS/Snowflakes), and session state management.
+agent.py:
+  Handles logic for calling LLMs (Ollama/Remote), extracting strict JSON for analysis, and generating chat responses/fashion advice.
+mbti.py:
+  Contains the parsing logic for LINE chat files (parse_line_chat_dynamic) and prompt engineering helpers.
+charts.py:
+  Uses Plotly to generate the Spectrum, Bar, and Radar charts based on the analysis data.
 ```
 ### Technologies
 ```bash
