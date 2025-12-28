@@ -31,22 +31,22 @@ OPENAI_API_KEY=sk-...
 MAP_API_KEY=
 ```
 ### Usage
-## 1. Start the Application:
+#### 1. Start the Application:
 ```bash
 streamlit run app.py
 ```
-## 2. Configure the Agent:
+#### 2. Configure the Agent:
 ```bash
 - Open the Sidebar (⚙️)
 - Select your "AI Helper" (Remote NCKU or Local Ollama)
 ```
-## 3. Start the Application:
+#### 3. Start the Application:
 ```bash
 - Upload your LINE chat .txt file
 - Select the specific friends you want to analyze from the list
 - Click 🚀 Run Analysis
 ```
-## 4. Explore:
+#### 4. Explore:
 ```bash
 - View the generated charts in the Visualizations tabs
 - Chat with the Elf agent below the results
