@@ -1,6 +1,8 @@
 import re
 import json
-
+import agent
+import urllib.parse
+import streamlit as st
 # ==========================================
 # 1. Language Helper
 # ==========================================
@@ -64,17 +66,83 @@ def parse_line_chat_dynamic(file_content):
     return {k: "\n".join(v) for k, v in messages.items() if len(v) >= 3}
 
 # ==========================================
-# 4. Prompt Constructor
+# Prompt Constructor
 # ==========================================
 def construct_analysis_prompt(selected_speakers_data):
+    """
+    selected_speakers_data: dict of {name: chat_lines}
+    """
+
     conversation_sample = ""
     for name, text in selected_speakers_data.items():
-        conversation_sample += f"Speaker [{name}]: {text[:600]}\n\n"
+        lines = text[:600].strip()
+        if not lines:
+            lines = "[No messages]"  # pad empty speakers
+        conversation_sample += f"=== {name} ===\n{lines}\n\n"
 
-    system_prompt = """
-    You are an expert MBTI analyst.
-    Task: Analyze the provided text samples for EACH speaker independently.
-    Output JSON ONLY:
-    { "results": [ { "name": "Name1", "mbti": "XXXX", "scores": [10, 20, 30, 40] } ] }
-    """
+    system_prompt = f"""
+You are an expert MBTI analyst.
+
+Task: Analyze the provided text samples for EACH speaker independently.
+You MUST output JSON ONLY.
+JSON Format:
+{{
+  "results": [
+    {{
+      "name": "Name1",
+      "mbti": "XXXX",
+      "scores": [10, 20, 30, 40]
+    }}
+  ]
+}}
+
+ALWAYS analyze these speakers: {', '.join(selected_speakers_data.keys())}
+Do NOT skip anyone, even if they have little text.
+"""
     return system_prompt, conversation_sample
+
+
+def tool_generate_style_advice(mbti_type, api_key):
+    # 1. Get the Text Advice from Ollama
+    system_prompt = f"""
+    You are a Fashion Stylist. User MBTI: {mbti_type}.
+    Describe a specific outfit in 3 keywords (e.g., "Minimalist, Beige, Structured").
+    Then provide the full detailed advice.
+    
+    Format:
+    KEYWORDS: [Keyword1, Keyword2, Keyword3]
+    ADVICE: [Full advice here...]
+    """
+    
+    messages = [{"role": "system", "content": system_prompt}]
+    res = call_ollama_api(messages, api_key, base_url, model_name, force_json=False)
+    content = res.get('content', '')
+    
+    # 2. Extract Keywords for the Search Link
+    # We try to find "KEYWORDS: ..." to make a smart search URL
+    keywords = f"{mbti_type} fashion aesthetic" # Default
+    if "KEYWORDS:" in content:
+        try:
+            # simple parsing logic
+            parts = content.split("KEYWORDS:")[1].split("ADVICE:")[0]
+            keywords = f"{mbti_type} fashion {parts.strip()}"
+        except:
+            pass
+            
+    # 3. Create a Clickable Image Search Link
+    search_query = urllib.parse.quote(keywords)
+    pinterest_url = f"https://www.pinterest.com/search/pins/?q={search_query}"
+    google_url = f"https://www.google.com/search?tbm=isch&q={search_query}"
+    
+    # 4. Append the buttons to the text
+    advice_part = content.split("ADVICE:")[-1].strip() if "ADVICE:" in content else content
+    
+    final_output = f"""
+    {advice_part}
+    
+    ---
+    ### 👗 See Examples
+    * [Search on Pinterest]({pinterest_url})
+    * [Search on Google Images]({google_url})
+    """
+    return final_output

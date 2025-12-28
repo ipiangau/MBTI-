@@ -3,7 +3,6 @@ import os
 import json
 from dotenv import load_dotenv
 
-# Custom Modules
 import mbti
 import charts
 import agent
@@ -84,7 +83,7 @@ with st.sidebar:
         model_name = "gemma3:4b"
     else:
         api_base = os.getenv("LOCAL_OLLAMA_URL", "http://localhost:11434")
-        api_key = "ollama"
+        api_key = os.getenv("OLLAMA_API_KEY")
         model_name = "llama3.2:1b"
 
     st.markdown("---")
@@ -134,8 +133,7 @@ if uploaded_file and api_base:
                     with st.spinner("🦌 Crunching numbers..."):
                         data = {n: speakers[n] for n in selected}
                         sys_prompt, user_content = mbti.construct_analysis_prompt(data)
-                        res = agent.run_analysis_request(sys_prompt, user_content, api_key, api_base, model_name)
-                        
+                        res = agent.run_analysis_request(sys_prompt, user_content,selected, api_key, api_base, model_name)
                         if res and "results" in res:
                             st.session_state.analysis_results = res["results"]
                             st.session_state.chat_messages = []
@@ -174,7 +172,7 @@ if st.session_state.analysis_results:
             st.markdown(msg["content"])
 
     # Input
-    if prompt := st.chat_input("Ask about compatibility..."):
+    if prompt := st.chat_input("Ask about compatibility, fight, fashion or anything about MBTI..."):
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
         
@@ -183,8 +181,7 @@ if st.session_state.analysis_results:
                 resp_text, _ = agent.generate_chat_response(
                     prompt, st.session_state.chat_messages, 
                     st.session_state.analysis_results,
-                    api_key, api_base, model_name, mbti.is_chinese
-                )
+                    api_key, api_base, model_name, mbti.is_chinese)
                 
                 if resp_text == "TOOL:CHART":
                     # GENERATE ALL CHARTS
