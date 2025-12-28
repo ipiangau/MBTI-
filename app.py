@@ -3,7 +3,7 @@ import os
 import json
 from dotenv import load_dotenv
 
-# Custom Modules
+# Custom Modules (Ensure mbti.py, charts.py, agent.py are in the same folder)
 import mbti
 import charts
 import agent
@@ -42,6 +42,7 @@ def set_cute_theme():
         box-shadow: 0px 2px 0px #500000;
         background-color: #a00000 !important;
     }
+    /* Snow Animation */
     @keyframes snow {
         0% { transform: translateY(-10px); opacity: 0; }
         20% { opacity: 1; }
@@ -71,10 +72,17 @@ with st.sidebar:
     st.header("⚙️ North Pole Settings")
     connection_type = st.radio("AI Helper", ["Remote NCKU", "Local Ollama"])
 
+    # Load Key from .env or Input
     if connection_type == "Remote NCKU":
-        api_base = os.getenv("API_BASE_URL")
-        api_key = os.getenv("API_KEY")
-        if not api_key: api_key = st.text_input("Secret Key", type="password")
+        api_base = os.getenv("API_BASE_URL", "https://api-gateway.netdb.csie.ncku.edu.tw")
+        env_key = os.getenv("MBTI_API_KEY") or os.getenv("API_KEY")
+        
+        if env_key:
+            api_key = env_key
+            st.success("✅ Key loaded from .env")
+        else:
+            api_key = st.text_input("Secret Key", type="password")
+            
         model_name = "gemma3:4b"
     else:
         api_base = os.getenv("LOCAL_OLLAMA_URL", "http://localhost:11434")
@@ -92,26 +100,27 @@ with st.sidebar:
 if "parsed_speakers" not in st.session_state: st.session_state.parsed_speakers = {}
 if "analysis_results" not in st.session_state: st.session_state.analysis_results = None
 if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
-# We now store a dictionary of charts
 if "charts_data" not in st.session_state: st.session_state.charts_data = None 
 
 # ==========================================
-# 4. Main UI
+# 4. Main UI Logic
 # ==========================================
 st.title("🎅 AI MBTI Workshop")
 st.markdown("### *Analyzing personalities, one chat at a time!*")
 
 uploaded_file = st.file_uploader("📂 Drop your chat file here", type=['txt'])
 
-# Welcome Message
+# Welcome Message if empty
 if not uploaded_file and not st.session_state.analysis_results:
     st.info("👋 **Welcome!** Upload a chat history to get started. 🎁")
 
 if uploaded_file and api_base:
+    # 1. Parse File
     if not st.session_state.parsed_speakers:
         content = uploaded_file.getvalue().decode("utf-8")
         st.session_state.parsed_speakers = mbti.parse_line_chat_dynamic(content)
 
+    # 2. Select Participants
     if st.session_state.parsed_speakers:
         speakers = st.session_state.parsed_speakers
         names = list(speakers.keys())
@@ -120,19 +129,25 @@ if uploaded_file and api_base:
             st.markdown("### 👥 Who is on the list?")
             selected = st.multiselect("Pick friends:", names, default=names)
             
+            # 3. Run Analysis Button
             if st.button("🚀 Run Analysis"):
                 if not selected:
                     st.warning("Pick someone!")
                 else:
                     with st.spinner("🦌 Crunching numbers..."):
+                        # Prepare prompt
                         data = {n: speakers[n] for n in selected}
                         sys_prompt, user_content = mbti.construct_analysis_prompt(data)
+                        
+                        # Call Agent
                         res = agent.run_analysis_request(sys_prompt, user_content, api_key, api_base, model_name)
                         
+                        # Check Success or Fail
                         if res and "results" in res:
+                            # --- SUCCESS ---
                             st.session_state.analysis_results = res["results"]
                             st.session_state.chat_messages = []
-                            st.session_state.charts_data = None # Reset charts
+                            st.session_state.charts_data = None 
                             
                             intro_msg = f"**Analysis Complete!** 🎄\n"
                             for p in res["results"]:
@@ -140,18 +155,26 @@ if uploaded_file and api_base:
                             st.session_state.chat_messages.append({"role": "assistant", "content": intro_msg})
                             st.rerun()
                         else:
-                            st.error("Analysis Failed.")
+                            # --- FAILURE (DEBUG MODE) ---
+                            st.error("❌ Analysis Failed!")
+                            
+                            error_msg = res.get("error", "Unknown Error")
+                            st.write(f"**Reason:** {error_msg}")
+                            
+                            if "raw_output" in res:
+                                with st.expander("👀 View Raw AI Response (Debug)"):
+                                    st.code(res["raw_output"], language="text")
+                                st.warning("The AI replied, but it didn't return valid JSON. Check the output above.")
 
 # ==========================================
-# 5. Results & Chat
+# 5. Results & Chat Interface
 # ==========================================
 if st.session_state.analysis_results:
     st.markdown("---")
     
-    # --- CHART SECTION (UPDATED) ---
+    # --- CHART SECTION ---
     if st.session_state.charts_data:
         st.subheader("📊 Visualizations")
-        # Tabs for multiple graph types
         tab1, tab2, tab3 = st.tabs(["✨ Spectrum", "📊 Bar Chart", "🕸️ Radar"])
         with tab1:
             st.plotly_chart(st.session_state.charts_data['spectrum'], use_container_width=True)
@@ -160,14 +183,14 @@ if st.session_state.analysis_results:
         with tab3:
             st.plotly_chart(st.session_state.charts_data['radar'], use_container_width=True)
 
-    # Chat History
+    # --- CHAT HISTORY ---
     st.markdown("### 💬 Chat with Elf")
     for msg in st.session_state.chat_messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Input
-    if prompt := st.chat_input("Ask about compatibility..."):
+    # --- CHAT INPUT ---
+    if prompt := st.chat_input("Ask about compatibility or request a chart..."):
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
         
@@ -179,8 +202,9 @@ if st.session_state.analysis_results:
                     api_key, api_base, model_name, mbti.is_chinese
                 )
                 
+                # Check for Tool Command
                 if resp_text == "TOOL:CHART":
-                    # GENERATE ALL CHARTS
+                    # Generate all charts
                     results = st.session_state.analysis_results
                     charts_dict = {
                         'spectrum': charts.generate_bipolar_chart(results),
@@ -194,6 +218,7 @@ if st.session_state.analysis_results:
                     st.session_state.chat_messages.append({"role": "assistant", "content": final_msg})
                     st.rerun()
                 else:
+                    # Normal Text Reply
                     st.markdown(resp_text)
                     st.session_state.chat_messages.append({"role": "assistant", "content": resp_text})
 
