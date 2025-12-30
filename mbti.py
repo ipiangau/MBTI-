@@ -78,3 +78,59 @@ def construct_analysis_prompt(selected_speakers_data):
     { "results": [ { "name": "Name1", "mbti": "XXXX", "scores": [10, 20, 30, 40] } ] }
     """
     return system_prompt, conversation_sample
+def get_quiz_questions():
+    """Returns a list of 12 quick questions."""
+    return [
+        {"id": 1, "txt": "I feel energized after being around a lot of people.", "dim": "E", "rev": False},
+        {"id": 2, "txt": "I often get lost in my thoughts and ignore my surroundings.", "dim": "N", "rev": False},
+        {"id": 3, "txt": "I make decisions based on logic rather than feelings.", "dim": "T", "rev": False},
+        {"id": 4, "txt": "I like to have a detailed plan before I start a trip.", "dim": "J", "rev": False},
+        {"id": 5, "txt": "I prefer a quiet night in reading over a loud party.", "dim": "E", "rev": True}, # Introvert
+        {"id": 6, "txt": "I trust concrete facts more than abstract theories.", "dim": "N", "rev": True}, # Sensing
+        {"id": 7, "txt": "I am easily affected by other people's emotions.", "dim": "T", "rev": True}, # Feeling
+        {"id": 8, "txt": "I prefer to keep my options open rather than committing.", "dim": "J", "rev": True}, # Perceiving
+        {"id": 9, "txt": "I usually start conversations with strangers.", "dim": "E", "rev": False},
+        {"id": 10, "txt": "I think about the future more than the present.", "dim": "N", "rev": False},
+        {"id": 11, "txt": "Debates and intellectual arguments excite me.", "dim": "T", "rev": False},
+        {"id": 12, "txt": "I get stressed when things are disorganized.", "dim": "J", "rev": False},
+    ]
+
+def calculate_quiz_result(answers):
+    """
+    answers: Dictionary {question_id: score (-2 to +2)}
+    Returns: MBTI String (e.g., "ENTJ") and raw scores.
+    """
+    # Scores: E, N, T, J (Positive = Left side, Negative = Right side)
+    # E vs I, N vs S, T vs F, J vs P
+    dims = {"E": 0, "N": 0, "T": 0, "J": 0}
+    
+    questions = get_quiz_questions()
+    
+    for q in questions:
+        val = answers.get(q['id'], 0)
+        # If question is "Reverse" (e.g. Introvert question for E dim), flip sign
+        if q['rev']: val = -val
+        dims[q['dim']] += val
+
+    # Determine Letters
+    mbti = ""
+    mbti += "E" if dims["E"] >= 0 else "I"
+    mbti += "N" if dims["N"] >= 0 else "S"
+    mbti += "T" if dims["T"] >= 0 else "F"
+    mbti += "J" if dims["J"] >= 0 else "P"
+    
+    # Normalize for charts (0-100 scale)
+    # Map range -6 to +6 -> 0 to 100
+    def normalize(val):
+        # -6 (Strong Right) -> 0
+        # +6 (Strong Left) -> 100
+        return int(((val + 6) / 12) * 100)
+
+    scores = [
+        normalize(dims["E"]), # E score
+        normalize(dims["N"]), # N score
+        normalize(dims["T"]), # T score
+        normalize(dims["J"])  # J score
+    ]
+    
+    return mbti, scores
