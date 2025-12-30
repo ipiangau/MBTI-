@@ -171,7 +171,7 @@ if st.session_state.analysis_results:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Input
+    # Inpu
     if prompt := st.chat_input("Ask about compatibility, fight, fashion or anything about MBTI..."):
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"): st.markdown(prompt)
