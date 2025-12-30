@@ -22,9 +22,17 @@ def set_cute_theme():
         background-size: cover;
     }
     .stChatMessage {
-        background-color: rgba(255, 255, 255, 0.15); /* Slightly more opaque for readability */
+        background-color: #06402B;
+        border: 3px solid #8B0000;
+        border-radius: 20px;
+        color: white; 
+    }
+    [data-testid="stForm"] {
+        background-color: rgba(40, 40, 40, 0.85);
         border: 2px solid #8B0000;
         border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     }
     .stButton > button {
         background-color: #8B0000 !important;
@@ -65,26 +73,59 @@ set_cute_theme()
 # Sidebar Settings
 # ==========================================
 with st.sidebar:
-    st.image(
-    [
+    st.image([
         "https://i.pinimg.com/736x/3d/39/c3/3d39c364105ac84dfc91b6f367259f1a.jpg",
         "https://i.pinimg.com/736x/27/63/6b/27636ba121aba11e515165d999b27a5c.jpg"
     ], width=80)
     st.header("⚙️ North Pole Settings")
-    connection_type = st.radio("AI Helper", ["Remote NCKU", "Local Ollama"])
+    connection_type = st.radio("AI Helper", ["Remote NCKU", "LLAMA from META"])
 
     if connection_type == "Remote NCKU":
+        provider = ""  
         api_base = os.getenv("API_BASE_URL")
         api_key = os.getenv("API_KEY")
-        if not api_key: api_key = st.text_input("Secret Key", type="password")
+        if not api_base: 
+            api_base = st.text_input("API Base URL", value="https://api-gateway.netdb.csie.ncku.edu.tw")
+        if not api_key: 
+            api_key = st.text_input("Secret Key", type="password")
         model_name = "gemma3:4b"
+        
+        # Show API status
+        if api_key and api_base:
+            st.success("✅ Successfully with API")
+        else:
+            st.warning("⚠️ Failed with API")
     else:
-        api_base = os.getenv("LOCAL_OLLAMA_URL", "http://localhost:11434")
-        api_key = "ollama"
-        api_key = os.getenv("OLLAMA_API_KEY", "ollama") 
-        model_name = "llama3.2:1b"
+        provider = "cloudflare"
+        api_base = os.getenv("CF_ACCOUNT_ID")
+        api_key = os.getenv("CF_API_TOKEN")
+        if not api_base: 
+            api_base = st.text_input("Cloudflare Account ID", value=os.getenv("CF_ACCOUNT_ID", ""))
+        if not api_key: 
+            api_key = st.text_input("Cloudflare API Token", value=os.getenv("CF_API_TOKEN", ""), type="password")
+        model_name = "@cf/meta/llama-3.1-8b-instruct"
+        
+        # Show API status
+        if api_key and api_base:
+            st.success("✅ Cloudflare configured")
+        else:
+            st.warning("⚠️ Missing Cloudflare credentials")
 
     st.markdown("---")
+    
+    with st.expander("🔧 Troubleshooting"):
+        st.markdown("""
+        **If you get 403 Forbidden:**
+        1. Check your API_KEY in .env
+        2. Verify NCKU access permissions
+        3. Try Cloudflare instead
+        
+        **Get Cloudflare API (Free):**
+        1. Sign up: [dash.cloudflare.com](https://dash.cloudflare.com/)
+        2. Go to AI → Workers AI
+        3. Copy Account ID & API Token
+        """)
+    
     if st.button("🗑️ Refresh"):
         st.session_state.clear()
         st.rerun()
@@ -92,20 +133,15 @@ with st.sidebar:
 # ==========================================
 # State Initialization
 # ==========================================
-# Tab 1: Analyzer
 if "parsed_speakers" not in st.session_state: st.session_state.parsed_speakers = {}
 if "analysis_results" not in st.session_state: st.session_state.analysis_results = None
 if "chat_messages" not in st.session_state: st.session_state.chat_messages = []
 if "charts_data" not in st.session_state: st.session_state.charts_data = None 
-
-# Tab 2: Quiz
 if "quiz_answers" not in st.session_state: st.session_state.quiz_answers = {}
 if "quiz_finished" not in st.session_state: st.session_state.quiz_finished = False
 if "quiz_result_mbti" not in st.session_state: st.session_state.quiz_result_mbti = None
 if "interview_history" not in st.session_state: st.session_state.interview_history = []
 if "quiz_scores" not in st.session_state: st.session_state.quiz_scores = None
-
-# Tab 3: Growth 
 if "growth_mbti" not in st.session_state: st.session_state.growth_mbti = None
 if "growth_history" not in st.session_state: st.session_state.growth_history = []
 
@@ -116,7 +152,6 @@ st.image("https://parade.com/.image/w_1080,q_auto:good,c_limit/MTkwNTgxMDYyNDUyN
 st.title("AI MBTI")
 st.markdown("### *Analyzing personalities, one chat at a time!*")
 
-# Create Tabs
 tab_upload, tab_test, tab_growth = st.tabs(["📂 Analyze Chat", "📝 Take Test", "🌱 Personal Growth"])
 
 # ==========================================
@@ -125,11 +160,9 @@ tab_upload, tab_test, tab_growth = st.tabs(["📂 Analyze Chat", "📝 Take Test
 with tab_upload:
     uploaded_file = st.file_uploader("📂 Drop your chat file here", type=['txt'])
 
-    # Welcome Message
     if not uploaded_file and not st.session_state.analysis_results:
         st.info("👋 **Welcome!** Upload a chat history to get started. 🎁")
 
-    # File Processing
     if uploaded_file and api_base:
         if not st.session_state.parsed_speakers:
             content = uploaded_file.getvalue().decode("utf-8")
@@ -139,38 +172,84 @@ with tab_upload:
             speakers = st.session_state.parsed_speakers
             names = list(speakers.keys())
             
+            st.markdown("### 👥 Who is on the list?")
+            selected = st.multiselect("Pick friends:", names, default=names)
+            
             if st.button("🚀 Run Analysis"):
                 if not selected:
                     st.warning("Pick someone!")
+                elif not api_key:
+                    st.error("❌ API credentials missing! Please configure in sidebar.")
                 else:
                     with st.spinner("🦌 Crunching numbers..."):
-                        data = {n: speakers[n] for n in selected}
-                        sys_prompt, user_content = mbti.construct_analysis_prompt(data)
-                        res = agent.run_analysis_request(sys_prompt, user_content, api_key, api_base, model_name)
-                        
-                        if res and "results" in res:
-                            st.session_state.analysis_results = res["results"]
-                            st.session_state.chat_messages = []
-                            st.session_state.charts_data = None # Reset charts
+                        try:
+                            data = {n: speakers[n] for n in selected}
+                            sys_prompt, user_content = mbti.construct_analysis_prompt(data)
                             
-                            intro_msg = f"**Analysis Complete!** 🎄\n"
-                            for p in res["results"]:
-                                intro_msg += f"\n* **{p['name']}**: `{p['mbti']}`"
-                            st.session_state.chat_messages.append({"role": "assistant", "content": intro_msg})
-                            st.rerun()
-                        else:
-                            st.error("Analysis Failed.")
+                            res = agent.run_analysis_request(
+                                sys_prompt, user_content, selected, 
+                                api_key, api_base, model_name, 
+                                provider=provider
+                            )
+                            
+                            if res and "results" in res:
+                                st.session_state.analysis_results = res["results"]
+                                st.session_state.chat_messages = []
+                                st.session_state.charts_data = None
+                                
+                                intro_msg = f"**Analysis Complete!** 🎄\n"
+                                for p in res["results"]:
+                                    intro_msg += f"\n* **{p['name']}**: `{p['mbti']}`"
+                                st.session_state.chat_messages.append({
+                                    "role": "assistant", 
+                                    "content": intro_msg
+                                })
+                                st.success("✅ Analysis complete!")
+                                st.rerun()
+                            else:
+                                st.error("Analysis returned invalid format.")
+                                
+                        except Exception as e:
+                            error_msg = str(e)
+                            st.error(f"❌ Analysis Failed")
+                            
+                            if "403" in error_msg or "Forbidden" in error_msg:
+                                st.error("""
+                                **403 Forbidden Error**
+                                
+                                Your NCKU API key was rejected. Possible causes:
+                                1. ❌ Invalid API key
+                                2. ❌ IP address not whitelisted
+                                3. ❌ Account doesn't have permission
+                                
+                                **Solutions:**
+                                - Contact NCKU admin to verify your access
+                                - OR switch to **Cloudflare Workers AI** (sidebar)
+                                  - Free tier available
+                                  - Sign up: https://dash.cloudflare.com/
+                                """)
+                            elif "401" in error_msg:
+                                st.error("**401 Unauthorized:** Check your API_KEY in .env")
+                            elif "timeout" in error_msg.lower():
+                                st.error("**Timeout:** Server took too long. Try again.")
+                            else:
+                                st.error(f"Error details: {error_msg}")
+                            
+                            # Show helpful debug info
+                            with st.expander("🔍 Debug Information"):
+                                st.code(f"""
+Provider: {provider}
+API Base: {api_base}
+Model: {model_name}
+Error: {error_msg}
+                                """)
 
-# ==========================================
-# 5. Results & Chat
-# ==========================================
+# Results & Chat Section
 if st.session_state.analysis_results:
     st.markdown("---")
     
-    # --- CHART SECTION (UPDATED) ---
     if st.session_state.charts_data:
         st.subheader("📊 Visualizations")
-        # Tabs for multiple graph types
         tab1, tab2, tab3 = st.tabs(["✨ Spectrum", "📊 Bar Chart", "🕸️ Radar"])
         with tab1:
             st.plotly_chart(st.session_state.charts_data['spectrum'], use_container_width=True)
@@ -179,88 +258,27 @@ if st.session_state.analysis_results:
         with tab3:
             st.plotly_chart(st.session_state.charts_data['radar'], use_container_width=True)
 
-    # Chat History
     st.markdown("### 💬 Chat with Elf")
     for msg in st.session_state.chat_messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    # Input
     if prompt := st.chat_input("Ask about compatibility..."):
         st.session_state.chat_messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
+        with st.chat_message("user"): 
+            st.markdown(prompt)
         
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                resp_text, _ = agent.generate_chat_response(
-                    prompt, st.session_state.chat_messages, 
-                    st.session_state.analysis_results,
-                    api_key, api_base, model_name, mbti.is_chinese
-                )
-            if not st.session_state.analysis_results:
-                st.markdown("### 👥 Who is on the list?")
-                selected = st.multiselect("Pick friends:", names, default=names)
-                
-                if st.button("🚀 Run Analysis"):
-                    if not selected:
-                        st.warning("Pick someone!")
-                    else:
-                        with st.spinner("🦌 Crunching numbers..."):
-                            data = {n: speakers[n] for n in selected}
-                            sys_prompt, user_content = mbti.construct_analysis_prompt(data)
-                            res = agent.run_analysis_request(sys_prompt, user_content, selected, api_key, api_base, model_name)
-                            if res and "results" in res:
-                                st.session_state.analysis_results = res["results"]
-                                st.session_state.chat_messages = []
-                                st.session_state.charts_data = None # Reset charts
-                                
-                                intro_msg = f"**Analysis Complete!** 🎄\n"
-                                for p in res["results"]:
-                                    intro_msg += f"\n* **{p['name']}**: `{p['mbti']}`"
-                                st.session_state.chat_messages.append({"role": "assistant", "content": intro_msg})
-                                st.rerun()
-                            else:
-                                st.error("Analysis Failed.")
-
-    # Display Results & Chat
-    if st.session_state.analysis_results:
-        st.markdown("---")
-        
-        # Display Charts if they exist
-        if st.session_state.charts_data:
-            st.subheader("📊 Visualizations")
-            chart_tab1, chart_tab2, chart_tab3 = st.tabs(["✨ Spectrum", "📊 Bar Chart", "🕸️ Radar"])
-            with chart_tab1:
-                st.plotly_chart(st.session_state.charts_data['spectrum'], use_container_width=True)
-            with chart_tab2:
-                st.plotly_chart(st.session_state.charts_data['bar'], use_container_width=True)
-            with chart_tab3:
-                st.plotly_chart(st.session_state.charts_data['radar'], use_container_width=True)
-
-        # Chat History
-        st.markdown("### 💬 Chat with Elf")
-        for msg in st.session_state.chat_messages:
-            with st.chat_message(msg["role"]):
-                st.markdown(msg["content"])
-
-        # Chat Input
-        if prompt := st.chat_input("Ask about compatibility, fight, fashion or anything about MBTI..."):
-            st.session_state.chat_messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"): st.markdown(prompt)
-            
-            with st.chat_message("assistant"):
-                with st.spinner("Thinking..."):
-                    # Only call the agent once
-                    resp_text, extra_data = agent.generate_chat_response(
-                        prompt, 
-                        st.session_state.chat_messages, 
+                try:
+                    resp_text, extra = agent.generate_chat_response(
+                        prompt, st.session_state.chat_messages, 
                         st.session_state.analysis_results,
-                        api_key, api_base, model_name, mbti.is_chinese
+                        api_key, api_base, model_name, mbti.is_chinese,
+                        provider 
                     )
                     
-                    # --- HANDLING TOOLS ---
                     if resp_text == "TOOL:CHART":
-                        # Generate Charts
                         results = st.session_state.analysis_results
                         charts_dict = {
                             'spectrum': charts.generate_bipolar_chart(results),
@@ -268,40 +286,44 @@ if st.session_state.analysis_results:
                             'radar': charts.generate_radar_chart(results)
                         }
                         st.session_state.charts_data = charts_dict
-                        
                         final_msg = "📊 I've painted some charts for you! (See tabs above)"
                         st.markdown(final_msg)
                         st.session_state.chat_messages.append({"role": "assistant", "content": final_msg})
                         st.rerun()
 
                     elif resp_text == "TOOL:IMAGE":
-                        # Generate Image
                         try:
                             from openai import OpenAI
-                            # Note: This requires OPENAI_API_KEY in .env, separate from your LLM key if using Ollama
                             openai_key = os.getenv("OPENAI_API_KEY")
                             if openai_key:
                                 client = OpenAI(api_key=openai_key)
                                 image_response = client.images.generate(
-                                    model="dall-e-3", # Updated model name usually
-                                    prompt=extra_data,   
+                                    model="dall-e-3", 
+                                    prompt=prompt,   
                                     size="1024x1024"
                                 )
                                 image_url = image_response.data[0].url
                                 st.image(image_url, caption="🖼 Generated Image")
-                                st.session_state.chat_messages.append({"role": "assistant", "content": f"🖼 Here is your image based on: {extra_data}"})
+                                st.session_state.chat_messages.append({
+                                    "role": "assistant", 
+                                    "content": f"🖼 Here is your image for: {prompt}"
+                                })
                             else:
                                 st.error("OpenAI API Key missing for image generation.")
                         except Exception as e:
                             st.error(f"Image generation failed: {e}")
 
                     else:
-                        # Standard Text Response
                         st.markdown(resp_text)
                         st.session_state.chat_messages.append({"role": "assistant", "content": resp_text})
+                        
+                except Exception as e:
+                    error_msg = f"❌ Error: {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.chat_messages.append({"role": "assistant", "content": error_msg})
 
 # ==========================================
-# TAB 2: Interactive Test
+# TAB 2: Quiz (keeping original code)
 # ==========================================
 with tab_test:
     st.header("🧠 Personality Self-Test")
@@ -310,7 +332,6 @@ with tab_test:
     if not st.session_state.quiz_finished:
         st.write(f"Answer these {len(questions)} questions to find your type!")
         
-        # Calculate progress safely
         current_answers = len(st.session_state.quiz_answers)
         progress = current_answers / len(questions) if len(questions) > 0 else 0
         st.progress(progress)
@@ -318,7 +339,6 @@ with tab_test:
         with st.form("quiz_form"):
             for q in questions:
                 st.markdown(f"**{q['id']}. {q['txt']}**")
-                # Use key to persist state
                 val = st.radio(
                     "Select:", 
                     ["Strongly Disagree", "Disagree", "Neutral", "Agree", "Strongly Agree"],
@@ -329,7 +349,6 @@ with tab_test:
                 )
             
             if st.form_submit_button("Calculate Type"):
-                # Collect answers manually from session state keys
                 all_answered = True
                 temp_answers = {}
                 for q in questions:
@@ -339,7 +358,8 @@ with tab_test:
                         break
                     val_str = st.session_state[key]
                     temp_answers[q['id']] = {
-                        "Strongly Disagree": -2, "Disagree": -1, "Neutral": 0, "Agree": 1, "Strongly Agree": 2
+                        "Strongly Disagree": -2, "Disagree": -1, "Neutral": 0, 
+                        "Agree": 1, "Strongly Agree": 2
                     }.get(val_str, 0)
                 
                 if all_answered:
@@ -357,13 +377,11 @@ with tab_test:
                     st.warning("Please answer all questions before submitting.")
 
     else:
-        # Quiz Finished View
         m_type = st.session_state.quiz_result_mbti
         st.balloons()
         st.success(f"🎉 Your Test Result: **{m_type}**")
         
         fake_result = [{"name": "You", "mbti": m_type, "scores": st.session_state.quiz_scores}]
-        # Assuming generate_radar_chart can handle single entry or you might need to adapt it
         st.plotly_chart(charts.generate_radar_chart(fake_result), use_container_width=True)
         
         if st.button("🔄 Retake Test"):
@@ -374,47 +392,48 @@ with tab_test:
 
         st.markdown("### 🕵️‍♀️ Dr. Elf's Interview Room")
         for msg in st.session_state.interview_history:
-            with st.chat_message(msg["role"]): st.markdown(msg["content"])
+            with st.chat_message(msg["role"]): 
+                st.markdown(msg["content"])
                 
         if user_text := st.chat_input("Reply to Dr. Elf...", key="chat_tab2"):
             st.session_state.interview_history.append({"role": "user", "content": user_text})
-            with st.chat_message("user"): st.markdown(user_text)
+            with st.chat_message("user"): 
+                st.markdown(user_text)
             with st.chat_message("assistant"):
                 with st.spinner("Analyzing..."):
-                    reply = agent.run_interview_step(
-                        user_text, st.session_state.interview_history, 
-                        st.session_state.quiz_result_mbti, api_key, api_base, model_name
-                    )
-                    st.markdown(reply)
-                    st.session_state.interview_history.append({"role": "assistant", "content": reply})
+                    try:
+                        reply = agent.run_interview_step(
+                            user_text, st.session_state.interview_history, 
+                            st.session_state.quiz_result_mbti, api_key, api_base, model_name, 
+                            provider=provider
+                        )
+                        st.markdown(reply)
+                        st.session_state.interview_history.append({"role": "assistant", "content": reply})
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")
 
 # ==========================================
-# TAB 3: Personal Growth
+# TAB 3: Growth (keeping original)
 # ==========================================
 with tab_growth:
     st.header("🌱 Personal Growth Coach")
     st.markdown("Already know your type? Get customized advice!")
 
-    # 1. INPUT PHASE
     if not st.session_state.growth_mbti:
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            user_input_mbti = st.text_input("Enter your MBTI Type (e.g., INTJ, ENFP):", max_chars=4)
-        with col2:
-            st.write("") # Spacer
-            st.write("") 
-            if st.button("Start Coaching"):
-                if len(user_input_mbti) == 4:
-                    st.session_state.growth_mbti = user_input_mbti.upper()
-                    st.session_state.growth_history = [{
-                        "role": "assistant", 
-                        "content": f"Hello **{user_input_mbti.upper()}**! I'm your Growth Coach. Ask me for self-improvement tips or how to handle specific situations!"
-                    }]
-                    st.rerun()
-                else:
-                    st.error("Please enter a 4-letter type (e.g., ISTP).")
+        user_input_mbti = st.text_input("Enter your MBTI Type (e.g., INTJ, ENFP):", max_chars=4)
+        st.write("")
+        st.write("") 
+        if st.button("Start Coaching"):
+            if len(user_input_mbti) == 4:
+                st.session_state.growth_mbti = user_input_mbti.upper()
+                st.session_state.growth_history = [{
+                    "role": "assistant", 
+                    "content": f"Hello **{user_input_mbti.upper()}**! I'm your Growth Coach. Ask me for self-improvement tips or how to handle specific situations!"
+                }]
+                st.rerun()
+            else:
+                st.error("Please enter a 4-letter type (e.g., ISTP).")
 
-    # 2. CHAT PHASE
     else:
         st.info(f"Coaching for: **{st.session_state.growth_mbti}**")
         if st.button("🔄 Change Type"):
@@ -424,23 +443,26 @@ with tab_growth:
 
         st.markdown("---")
         
-        # Display Chat
         for msg in st.session_state.growth_history:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        # Input
         if prompt := st.chat_input("Ask for advice (e.g., 'How do I handle stress?')", key="chat_tab3"):
             st.session_state.growth_history.append({"role": "user", "content": prompt})
-            with st.chat_message("user"): st.markdown(prompt)
+            with st.chat_message("user"): 
+                st.markdown(prompt)
             
             with st.chat_message("assistant"):
                 with st.spinner("Coach is thinking..."):
-                    reply = agent.run_growth_advisor_step(
-                        prompt, 
-                        st.session_state.growth_history, 
-                        st.session_state.growth_mbti,
-                        api_key, api_base, model_name
-                    )
-                    st.markdown(reply)
-                    st.session_state.growth_history.append({"role": "assistant", "content": reply})
+                    try:
+                        reply = agent.run_growth_advisor_step(
+                            prompt, 
+                            st.session_state.growth_history, 
+                            st.session_state.growth_mbti,
+                            api_key, api_base, model_name, 
+                            provider=provider
+                        )
+                        st.markdown(reply)
+                        st.session_state.growth_history.append({"role": "assistant", "content": reply})
+                    except Exception as e:
+                        st.error(f"Error: {str(e)}")

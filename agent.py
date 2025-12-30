@@ -8,40 +8,91 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ==========================================
-# API Caller (Remote NCKU + Local Ollama)
+# API Caller (Cloudflare + Remote NCKU)
 # ==========================================
-def call_ollama_api(messages, api_key, base_url, model_name,force_json=False):
-    base_url = base_url.rstrip("/")
-    url = f"{base_url}/api/chat"
+def call_llama_api(messages, api_key, base_url, model_name, provider="cloudflare", force_json=False):
+    """
+    Unified caller for Cloudflare and Standard/Ollama APIs
+    """
+    if not api_key or not base_url:
+        raise Exception("API credentials missing. Please configure API_KEY and BASE_URL.")
+    
+    # --- CLOUDFLARE WORKERS AI ---
+    if provider == "cloudflare":
+        account_id = base_url 
+        url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model_name}"
+        
+        headers = {"Authorization": f"Bearer {api_key}"}
+        payload = {"messages": messages}
+        
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=60)
+            data = r.json()
+            
+            if data.get("success"):
+                return {"role": "assistant", "content": data["result"]["response"]}
+            else:
+                err = data.get("errors", [{"message": "Unknown Error"}])[0]["message"]
+                raise Exception(f"Cloudflare Error: {err}")
+        except requests.exceptions.Timeout:
+            raise Exception("Cloudflare API timeout. Please try again.")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Cloudflare Connection Failed: {str(e)}")
 
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+    # --- STANDARD / OLLAMA / NCKU ---
+    else:
+        base_url = base_url.rstrip("/")
+        if "ncku" in base_url or "v1" in base_url:
+            url = f"{base_url}/chat/completions"
+        else:
+            url = f"{base_url}/api/chat"
+        
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
 
-    payload = {
-        "model": model_name,
-        "messages": messages,
-        "stream": False,
-        "temperature": 0.2
-    }
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "stream": False,
+            "temperature": 0.7
+        }
+        
+        if force_json and "localhost" in base_url:
+            payload["format"] = "json"
 
-    if force_json and "localhost" in base_url:
-        payload["format"] = "json"
+        try:
+            r = requests.post(url, json=payload, headers=headers, timeout=180)
+            
+            # Handle different error codes
+            if r.status_code == 403:
+                raise Exception(
+                    "403 Forbidden: API key denied. Please verify:\n"
+                    "1. Your API_KEY is correct in .env\n"
+                    "2. Your IP is whitelisted by NCKU\n"
+                    "3. Try using Cloudflare Workers AI instead (sidebar option)"
+                )
+            elif r.status_code == 401:
+                raise Exception("401 Unauthorized: Invalid API key. Check your .env file.")
+            elif r.status_code == 404:
+                raise Exception(f"404 Not Found: Invalid endpoint URL - {url}")
+            
+            r.raise_for_status()
+            data = r.json()
 
-    r = requests.post(url, json=payload, headers=headers, timeout=180)
-    r.raise_for_status()
+            if "message" in data: 
+                return data["message"]
+            if "choices" in data: 
+                return data["choices"][0]["message"]
+            return {"role": "assistant", "content": ""}
+        except requests.exceptions.Timeout:
+            raise Exception("API timeout. The server took too long to respond.")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"API Error: {str(e)}")
 
-    data = r.json()
-
-    if "message" in data:
-        return data["message"]
-
-    if "choices" in data:
-        return data["choices"][0]["message"]
-
-    raise Exception("Unknown LLM response format")
 
 def is_real_location(text):
+    """Filter out non-location strings"""
     bad_words = [
         "person", "infp", "enfp","infj","intp","isfp","isfj","entp",
         "esfp","estp","intj","entj","istj","estj","enfj","esfj", "mbti", 
@@ -51,33 +102,63 @@ def is_real_location(text):
     return not any(w in t for w in bad_words)
 
 # ==========================================
-# Google Maps Tools (Upgraded)
+# Google Maps Tools
 # ==========================================
 def get_coordinates(location_name, api_key):
     """Helper: Turns a place name into Lat/Lng coordinates"""
+    
+    # Hardcoded coordinates for common locations (fallback)
+    KNOWN_LOCATIONS = {
+        "ncku": {"lat": 22.9977, "lng": 120.2173},
+        "ncku campus": {"lat": 22.9977, "lng": 120.2173},
+        "near ncku": {"lat": 22.9977, "lng": 120.2173},
+        "national cheng kung university": {"lat": 22.9977, "lng": 120.2173},
+        "national cheng kung university, tainan": {"lat": 22.9977, "lng": 120.2173},
+        "tainan": {"lat": 22.9908, "lng": 120.2133},
+    }
+    
+    # Check if we have hardcoded coordinates first
+    key = location_name.lower().strip()
+    if key in KNOWN_LOCATIONS:
+        print(f"✅ Using cached coordinates for: {location_name}")
+        return KNOWN_LOCATIONS[key]
+    
+    # If no API key, try hardcoded
+    if not api_key:
+        print("⚠️ No Google Maps API key, using fallback")
+        return KNOWN_LOCATIONS.get("ncku")  # Default to NCKU
+        
     endpoint = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json"
+    
     params = {
         "input": location_name,
         "inputtype": "textquery",
         "fields": "geometry",
         "key": api_key
     }
-    aliases = {
-        "ncku": "National Cheng Kung University, Tainan",
-        "ncku campus": "National Cheng Kung University, Tainan",
-        "near ncku": "National Cheng Kung University, Tainan"
-    }
-    key = location_name.lower().strip()
-    if key in aliases:
-        location_name = aliases[key]
+    
     try:
-        r = requests.get(endpoint, params=params)
+        r = requests.get(endpoint, params=params, timeout=10)
         data = r.json()
+        
         if data.get("status") == "OK" and data.get("candidates"):
-            return data["candidates"][0]["geometry"]["location"] # Returns {'lat': ..., 'lng': ...}
-    except:
-        pass
-    return None
+            print(f"✅ Found coordinates via API: {location_name}")
+            return data["candidates"][0]["geometry"]["location"]
+        elif data.get("status") == "REQUEST_DENIED":
+            print("❌ API key denied, using fallback")
+            return KNOWN_LOCATIONS.get("ncku")
+        elif data.get("status") == "ZERO_RESULTS":
+            print(f"⚠️ No results for '{location_name}', using fallback")
+            return KNOWN_LOCATIONS.get("ncku")
+        else:
+            print(f"⚠️ API status: {data.get('status')}, using fallback")
+            return KNOWN_LOCATIONS.get("ncku")
+    except requests.exceptions.Timeout:
+        print("⚠️ API timeout, using fallback")
+        return KNOWN_LOCATIONS.get("ncku")
+    except Exception as e:
+        print(f"⚠️ Geocoding error: {e}, using fallback")
+        return KNOWN_LOCATIONS.get("ncku")
 
 MBTI_CAFE_KEYWORDS = {
     "INFP": ["quiet", "aesthetic", "cozy", "indie", "artsy"],
@@ -85,17 +166,14 @@ MBTI_CAFE_KEYWORDS = {
     "INTP": ["quiet", "study", "wifi", "minimal"],
     "ISFP": ["aesthetic", "hand drip", "cozy", "artsy"],
     "ISFJ": ["calm", "comfortable", "traditional"],
-    
     "ENFP": ["vibrant", "creative", "brunch", "aesthetic"],
     "ENTP": ["creative", "trendy", "discussion"],
     "ESFP": ["lively", "instagram", "dessert"],
     "ESTP": ["lively", "social", "open space"],
-    
     "INTJ": ["minimal", "quiet", "workspace"],
     "ENTJ": ["spacious", "meeting", "modern"],
     "ISTJ": ["quiet", "structured", "classic"],
     "ESTJ": ["spacious", "efficient", "business"],
-
     "ENFJ": ["warm", "social", "comfortable"],
     "ESFJ": ["friendly", "popular", "group"],
 }
@@ -103,48 +181,42 @@ MBTI_CAFE_KEYWORDS = {
 def get_mbti_cafe_keyword(mbti_type):
     if not mbti_type:
         return "best cafe"
-    
     traits = MBTI_CAFE_KEYWORDS.get(mbti_type.upper())
     if not traits:
         return "best cafe"
-
-    # Google prefers short phrases
     return " ".join(traits[:2]) + " cafe"
 
-def tool_recommend_places(location_query, place_type, api_key,keyword="best cafe",mbti=None):
-    """
-    Finds highly-rated places near a specific location or multiple locations (midpoint).
-    location_query: Can be a single string "Central Park" or a list ["Central Park", "Empire State"]
-    """
+def tool_recommend_places(location_query, place_type, api_key, keyword="best cafe", mbti=None):
+    # Even without API key, try to use hardcoded coordinates
     if not api_key:
-        return "Error: Google Maps API key is missing."
+        print("⚠️ Warning: Google Maps API key missing, using limited functionality")
 
-    # 1. HANDLE MEETING IN THE MIDDLE
-    # If the user provided multiple locations (split by ' and ' or just passed a list)
     if " and " in location_query:
         locations = location_query.split(" and ")
     else:
         locations = [location_query]
 
-    #ignore fake locations
     locations = [loc for loc in locations if is_real_location(loc)]
-
-    # Get coords for all points
+    
+    # If no valid locations, default to NCKU
+    if not locations:
+        locations = ["National Cheng Kung University, Tainan"]
+    
     coords_list = []
     for loc in locations:
         coords = get_coordinates(loc, api_key)
         if coords:
             coords_list.append(coords)
     
+    # Should always have coords now due to fallback
     if not coords_list:
-        return "Could not find coordinates for the provided locations."
+        # Ultimate fallback
+        coords_list = [{"lat": 22.9977, "lng": 120.2173}]  # NCKU coords
 
-    # Calculate Midpoint (Average Lat/Lng)
     avg_lat = sum(c['lat'] for c in coords_list) / len(coords_list)
     avg_lng = sum(c['lng'] for c in coords_list) / len(coords_list)
     search_location = f"{avg_lat},{avg_lng}"
     
-    # 2. SEARCH NEARBY (Places API)
     endpoint = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
     params = {
         "location": search_location,
@@ -155,21 +227,20 @@ def tool_recommend_places(location_query, place_type, api_key,keyword="best cafe
     }
 
     try:
-        response = requests.get(endpoint, params=params)
+        response = requests.get(endpoint, params=params, timeout=15)
         data = response.json()
+        
+        if data.get("status") == "REQUEST_DENIED":
+            return "❌ Google Maps API error: Your API key may be invalid or restricted."
         
         results = []
         if data.get("status") == "OK":
-            # Filter: Rating > 4.0 and at least 50 reviews
             valid_places = [
                 p for p in data.get("results", []) 
                 if p.get("rating", 0) >= 4.0 and p.get("user_ratings_total", 0) > 50
             ]
-            
-            # Sort by rating
             valid_places.sort(key=lambda x: x.get("rating", 0), reverse=True)
             
-            # Get top 3
             for p in valid_places[:3]:
                 name = p.get("name")
                 addr = p.get("vicinity")
@@ -181,212 +252,237 @@ def tool_recommend_places(location_query, place_type, api_key,keyword="best cafe
             
             if results:
                 header = ""
-
-                # MBTI header
                 if mbti and keyword:
                     header += f"☕ **MBTI Match: {mbti} – {keyword.title()}**\n\n"
-
-                # Midpoint header
                 if len(locations) > 1:
                     header += "📍 **Meeting Point Calculated**\n\n"
-
                 return header + "\n\n".join(results)
-
             else:
-                return "No highly-rated places found nearby."
+                return f"No highly-rated {place_type}s found nearby. Try a different location or category."
+        else:
+            return f"Google Maps returned status: {data.get('status')}. No results found."
+    except requests.exceptions.Timeout:
+        return "❌ Google Maps API timeout. Please try again."
     except Exception as e:
-        return f"API Error: {str(e)}"
-        
-    return "No results."
+        return f"❌ API Error: {str(e)}"
 
 def tool_google_maps_lookup(query, api_key):
+    if not api_key:
+        return "❌ Google Maps API key missing."
+        
     endpoint = "https://maps.googleapis.com/maps/api/place/textsearch/json"
     params = {"query": query, "key": api_key}
-    r = requests.get(endpoint, params=params)
-    data = r.json()
+    
+    try:
+        r = requests.get(endpoint, params=params, timeout=10)
+        data = r.json()
 
-    if data.get("status") == "OK" and data.get("results"):
-        p = data["results"][0]
-        return f"{p['name']} – {p.get('formatted_address','')}"
-    return "Location not found."
+        if data.get("status") == "OK" and data.get("results"):
+            p = data["results"][0]
+            return f"📍 **{p['name']}**\n{p.get('formatted_address','')}"
+        return "Location not found."
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 # ==========================================
-# STRICT JSON Extraction
+# JSON Extraction
 # ==========================================
 def extract_json_safe(text):
+    """Extract valid JSON from potentially malformed text"""
     text = re.sub(r"```json|```", "", text).strip()
-
+    
     try:
-        obj = json.loads(text)
-        return obj
+        return json.loads(text)
     except:
         pass
-
-    # fallback bracket matching
+    
+    # Try to find JSON object
     stack, start = [], -1
     for i, ch in enumerate(text):
         if ch == "{":
-            if not stack:
+            if not stack: 
                 start = i
             stack.append("{")
         elif ch == "}":
-            if stack:
+            if stack: 
                 stack.pop()
             if not stack and start != -1:
-                return json.loads(text[start:i+1])
-
-
-    raise ValueError("No valid JSON found")
+                try:
+                    return json.loads(text[start:i+1])
+                except:
+                    pass
+    
+    raise ValueError("No valid JSON found in response")
 
 # ==========================================
-# MBTI Analysis (GROUP SAFE)
+# MBTI Analysis
 # ==========================================
-def run_analysis_request(system_prompt, user_content, selected_people, api_key, base_url, model_name):
-    # Force LLM to analyze only selected people
+def run_analysis_request(system_prompt, user_content, selected_people, api_key, base_url, model_name, provider):
+    """Analyze MBTI for each person in the conversation"""
     hard_guard = f"""
 CRITICAL RULES:
 - Analyze EACH speaker independently
 - NEVER merge people
-- NEVER output a single person only
-- Output MUST be valid JSON
-- JSON MUST contain "results" array
+- Output MUST be valid JSON with "results" array
 - One object per speaker
+- Format: {{"results": [{{"name": "...", "mbti": "XXXX", "scores": [E, N, F, P]}}]}}
 
-ALWAYS ANALYZE THESE PEOPLE:
+PEOPLE TO ANALYZE:
 {', '.join(selected_people)}
 """
-
     messages = [
         {"role": "system", "content": system_prompt + hard_guard},
         {"role": "user", "content": user_content}
     ]
 
-    ai_msg = call_ollama_api(messages, api_key, base_url, model_name,force_json=True)
-    content = ai_msg.get("content", "")
-    parsed = extract_json_safe(content)
+    try:
+        ai_msg = call_llama_api(messages, api_key, base_url, model_name, provider=provider, force_json=True)
+        content = ai_msg.get("content", "")
+        parsed = extract_json_safe(content)
 
-    # HARD VALIDATION
-    if "results" not in parsed or not isinstance(parsed["results"], list):
-        raise ValueError("Invalid MBTI output: missing results[]")
-
-    if len(parsed["results"]) != len(selected_people):
-        raise ValueError(f"Model analyzed {len(parsed['results'])} people, expected {len(selected_people)} ❌")
-
-    return parsed
+        if "results" not in parsed or not isinstance(parsed["results"], list):
+            raise ValueError("Invalid MBTI output: missing results[]")
+        
+        if len(parsed["results"]) != len(selected_people):
+            raise ValueError(f"Model analyzed {len(parsed['results'])} people, expected {len(selected_people)} ❌")
+        
+        return parsed
+    except Exception as e:
+        raise Exception(f"Analysis failed: {str(e)}")
 
 # ==========================================
-# Style Tool (TEXT ONLY – Pinterest Ref)
+# Style Tool
 # ==========================================
-def tool_generate_style_advice(mbti_type, api_key, base_url, model_name):
+def tool_generate_style_advice(mbti_type, api_key, base_url, model_name, provider):
+    """Generate fashion advice and image for MBTI type"""
     system_prompt = f"""
 You are a professional fashion stylist.
 Client MBTI: {mbti_type}
 
 Rules:
-- Pinterest is ONLY a reference
-- ONLY provide Pinterest search links
+- Provide specific outfit suggestions
+- ONLY provide Pinterest search links for inspiration
+- Be concise and practical
 
-Output Markdown:
-### 🎨 {mbti_type} Style
-**Vibe:** ...
-**Outfit:** ...
-**Colors:** ...
-**Tip:** ...
-**Pinterest References:**
+Output Markdown Format:
+### 🎨 {mbti_type} Style Guide
+**Vibe:** [personality-aligned aesthetic]
+**Outfit Suggestions:** [specific clothing items]
+**Color Palette:** [recommended colors]
+**Style Tip:** [one practical tip]
+**Pinterest Inspiration:**
 - https://www.pinterest.com/search/pins/?q={mbti_type}%20fashion
 """
+    
     messages = [{"role": "system", "content": system_prompt}]
-    text_res = call_ollama_api(messages, api_key, base_url, model_name,force_json=False)
-    style_advice = text_res.get("content", "")
+    
+    try:
+        text_res = call_llama_api(messages, api_key, base_url, model_name, provider=provider, force_json=False)
+        style_advice = text_res.get("content", "No style advice generated.")
+    except Exception as e:
+        style_advice = f"Error generating style advice: {str(e)}"
 
-    # --- OpenAI image generation ---
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    prompt = f"A full body of person with an outfit of {mbti_type} style, stylish, colorful, realistic"
+    # Generate image
+    image_url = None
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if openai_key:
+        try:
+            client = OpenAI(api_key=openai_key)
+            prompt = f"A fashionable person wearing {mbti_type} personality style outfit, full body, modern, stylish, photorealistic"
+            image_response = client.images.generate(
+                model="dall-e-3", 
+                prompt=prompt,
+                size="1024x1024",
+                n=1
+            )
+            image_url = image_response.data[0].url
+        except Exception as e:
+            print(f"Image generation failed: {e}")
 
-    image_response = client.images.generate(
-        model="gpt-image-1",
-        prompt=prompt,
-        size="1024x1024"
-    )
-    image_url = image_response.data[0].url
-
-    # Return both style advice and image URL
     return style_advice, image_url
 
 def find_target_person(user_input, context_results):
+    """Find the most relevant person from context based on user input"""
     user_input_lower = user_input.lower()
-    best_match = context_results[0]  # fallback
-
+    best_match = context_results[0]
     max_score = 0
+    
     for person in context_results:
         name_lower = person["name"].lower()
-        # simple substring match score
         score = len(set(name_lower.split()) & set(user_input_lower.split()))
         if score > max_score:
             best_match = person
             max_score = score
-
+    
     return best_match
+
 # ==========================================
 # Chat Agent
 # ==========================================
 def normalize_place_type(text):
+    """Normalize user's place request to Google Maps type"""
     text = text.lower()
-    if "cafe" in text or "coffee" in text:
+    if "cafe" in text or "coffee" in text: 
         return "cafe"
-    if "restaurant" in text or "food" in text:
+    if "restaurant" in text or "food" in text: 
         return "restaurant"
-    if "bar" in text:
+    if "bar" in text: 
         return "bar"
-    return "cafe"   # default
+    if "park" in text:
+        return "park"
+    return "cafe"
 
-def generate_chat_response(user_input, chat_history, context_results,api_key, base_url, model_name, is_chinese_func):
+def generate_chat_response(user_input, chat_history, context_results, api_key, base_url, model_name, is_chinese_func, provider):
     """
     Central Controller: Routes user input to the correct tool or standard chat.
     """
-    DEFAULT_LOCATION = "National Cheng Kung University, Tainan"
     names = [r["name"] for r in context_results]
 
-    # --- 1. SYSTEM PROMPT FOR REGULAR CHAT ---
     system_prompt = f"""
-You are an MBTI assistant.
-Participants: {", ".join(names)}
-Data: {json.dumps(context_results)}
+You are an MBTI assistant helping analyze personalities.
+Available Participants: {", ".join(names)}
+Analysis Data: {json.dumps(context_results, ensure_ascii=False)}
+
+Capabilities:
+- Answer questions about participants' MBTI types
+- Compare personalities
+- Suggest activities based on MBTI
+- Generate charts when requested
+- Provide fashion advice
+- Recommend places using Google Maps
 
 Rules:
-- If the question is hypothetical, playful, or conversational (e.g. "who would win in a fight"),
-  answer in natural language
-- Charts ONLY when user asks for chart/graph/statistics
-- If user asks for generating images → respond TOOL:IMAGE
-- If user asks for fashion → call tool_generate_style_advice()
-- If user asks for charts → respond TOOL:CHART
-- if user asks for map/location → call Google Maps tools
-- If user asks about a specific person → answer based on their data
-- If user asks for places recommenation for a person → use their MBTI to suggest places
+- Be conversational and friendly
+- Use natural language for general questions
+- Call tools when user explicitly requests them
+- Base insights on MBTI research
 """
 
-    map_keywords = ["where", "location", "map", "best place", "meet", "between", "cafe", "restaurant", "bar", "park", "mall"]
+    map_keywords = ["where", "location", "map", "best place", "meet", "between", "cafe", "restaurant", "bar", "park", "mall", "find"]
     
-    if any(k in user_input.lower() for k in map_keywords)and "fashion" not in user_input.lower():
+    # --- MAP/LOCATION HANDLER ---
+    if any(k in user_input.lower() for k in map_keywords) and "fashion" not in user_input.lower():
         google_api_key = os.getenv("MAP_API_KEY")
+        if not google_api_key:
+            return "❌ Google Maps API key not configured. Please add MAP_API_KEY to your .env file.", None
+            
         category = normalize_place_type(user_input)
         
-        #results_text = tool_recommend_places(location_query, category, google_api_key)
-        
         extraction_prompt = """
-        Analyze the user's request for location services.
-        Return ONLY valid JSON with this structure:
-        {
-            "intent": "lookup" or "recommend", 
-            "locations": ["location1", "location2"], 
-            "category": "restaurant" (default) or "cafe" or "bar" or "park" or "mall"
-        }
-        If the user does not specify a clear place name, 
-        use exactly: "National Cheng Kung University, Tainan".
-        Never output vague locations like "near", "campus", or "around".
-        Example: "Meet halfway between Tokyo and Osaka for coffee" -> {"intent": "recommend", "locations": ["Tokyo", "Osaka"], "category": "cafe"}
-        Example: "Where is Central Park?" -> {"intent": "lookup", "locations": ["Central Park"], "category": "general"}
-        """
+Analyze the user's location request.
+Return ONLY valid JSON:
+{
+    "intent": "lookup" or "recommend", 
+    "locations": ["location1", "location2"], 
+    "category": "cafe" or "restaurant" or "bar" or "park"
+}
+
+Rules:
+- If user type in ncku or NCKU or campus, interpret as National Cheng Kung University, Tainan
+- If no specific location mentioned, use "National Cheng Kung University, Tainan"
+- Never use vague terms like "near", "around", "campus"
+- Use full place names
+"""
         
         extract_msgs = [
             {"role": "system", "content": extraction_prompt},
@@ -394,29 +490,28 @@ Rules:
         ]
         
         try:
-            params = call_ollama_api(extract_msgs, api_key, base_url, model_name, force_json=True)
-            if isinstance(params, str):
-                params = extract_json_safe(params)
+            params_response = call_llama_api(extract_msgs, api_key, base_url, model_name, provider=provider, force_json=True)
+            params = extract_json_safe(params_response.get("content", "{}"))
         except:
-            params = {"locations": [user_input]}
+            params = {"intent": "recommend", "locations": ["National Cheng Kung University, Tainan"]}
 
         intent = params.get("intent", "recommend")
         locations = params.get("locations", [])
-
-        # filter fake locations
         locations = [loc for loc in locations if is_real_location(loc)]
         
         if not locations:
             locations = ["National Cheng Kung University, Tainan"]
 
+        # Clean location names
         cleaned = []
         for loc in locations:
             if loc.lower() in ["ncku", "ncku campus", "near ncku", "campus"]:
                 cleaned.append("National Cheng Kung University, Tainan")
             else:
                 cleaned.append(loc)
-
         locations = cleaned
+
+        # Get MBTI-based keyword
         target_person = find_target_person(user_input, context_results)
         mbti = target_person.get("mbti") if target_person else None
         keyword = get_mbti_cafe_keyword(mbti)
@@ -425,105 +520,88 @@ Rules:
             query = locations[0] if locations else user_input
             return tool_google_maps_lookup(query, google_api_key), None
 
-        # Single-location recommend
         location_query = locations[0]
-        return tool_recommend_places(location_query,category,google_api_key,keyword=keyword,mbti=mbti), None
-    # --- 3. CHART HANDLER ---
-    chart_keywords = ["chart", "graph", "compare stats", "comparison chart"]
-    if any(k in user_input.lower() for k in chart_keywords):
+        return tool_recommend_places(location_query, category, google_api_key, keyword=keyword, mbti=mbti), None
+    
+    # --- CHART HANDLER ---
+    if any(k in user_input.lower() for k in ["chart", "graph", "compare stats", "comparison chart", "visualize"]):
         return "TOOL:CHART", None
 
-    # --- 4. FASHION HANDLER ---
-    
-    if "fashion" in user_input.lower():
+    # --- FASHION HANDLER ---
+    if "fashion" in user_input.lower() or "style" in user_input.lower():
         target = find_target_person(user_input, context_results)
-        # Fallback loop to find specific mentioned name
-        for p in context_results:
-            if p["name"].lower() in user_input.lower():
-                target = p
-                break
-
-        style, image_url = tool_generate_style_advice(
-            target["mbti"], api_key, base_url, model_name
-        )
+        style, image_url = tool_generate_style_advice(target["mbti"], api_key, base_url, model_name, provider=provider)
         return style, image_url
     
-    # --- 4. IMAGE HANDLER (generic) ---
-    image_keywords = [
-        "generate image", "generate a picture", "draw", "show me a picture",
-        "create an image", "make an image", "picture of", "image of"
-    ]
-
+    # --- IMAGE HANDLER ---
+    image_keywords = ["generate image", "generate a picture", "draw", "show me a picture", "create an image"]
     if any(k in user_input.lower() for k in image_keywords):
-        # Return TOOL signal + prompt
-        image_prompt = user_input.strip()
-        return "TOOL:IMAGE", image_prompt
+        return "TOOL:IMAGE", user_input.strip()
 
-
-    # --- 5. STANDARD CHAT HANDLER ---
+    # --- STANDARD CHAT ---
     messages = [{"role": "system", "content": system_prompt}]
-    messages += chat_history
+    messages += chat_history[-6:]  # Keep last 6 messages for context
     messages.append({"role": "user", "content": user_input})
 
-    ai_msg = call_ollama_api(messages, api_key, base_url, model_name, force_json=False)
-    content = ai_msg.get("content", "")
+    try:
+        ai_msg = call_llama_api(messages, api_key, base_url, model_name, provider=provider, force_json=False)
+        content = ai_msg.get("content", "I'm not sure how to respond to that.")
+        return content, None
+    except Exception as e:
+        return f"❌ Error: {str(e)}", None
 
-    return content, None
-
-def run_interview_step(user_input, chat_history, current_mbti_guess, api_key, base_url, model_name):
+def run_interview_step(user_input, chat_history, current_mbti_guess, api_key, base_url, model_name, provider):
     """
-    The AI acts as a psychologist to refine the user's MBTI.
+    AI psychologist refines user's MBTI through conversation
     """
     system_prompt = f"""
-    You are an expert MBTI Psychologist.
-    The user just took a quiz and got: {current_mbti_guess}.
-    
-    GOAL: Have a conversation to verify if this result is accurate.
-    1. Ask probing questions about their habits, stress, and energy.
-    2. Keep responses short (max 2 sentences).
-    3. Be friendly and empathetic.
-    4. Do NOT output JSON. Just chat.
-    """
+You are an expert MBTI Psychologist.
+The user's initial test result: {current_mbti_guess}
+
+Your goal: Verify and refine their MBTI type through conversation.
+
+Guidelines:
+1. Ask thoughtful questions about their natural behaviors
+2. Focus on one dimension at a time (E/I, S/N, T/F, J/P)
+3. Keep responses under 3 sentences
+4. Be empathetic and non-judgmental
+5. Do NOT output JSON - just have a natural conversation
+"""
     
     messages = [{"role": "system", "content": system_prompt}]
-    
-    # Add recent history
     for msg in chat_history[-6:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
-        
     messages.append({"role": "user", "content": user_input})
     
-    ai_msg = call_ollama_api(messages, api_key, base_url, model_name)
-    return ai_msg.get('content', "I'm listening...")
-# ==========================================
-# 6. Growth Coach Function 
-# ==========================================
-def run_growth_advisor_step(user_input, chat_history, user_mbti, api_key, base_url, model_name):
+    try:
+        ai_msg = call_llama_api(messages, api_key, base_url, model_name, provider=provider, force_json=False)
+        return ai_msg.get('content', "I'm listening... Tell me more.")
+    except Exception as e:
+        return f"I'm having trouble processing that. Could you rephrase? (Error: {str(e)})"
+
+def run_growth_advisor_step(user_input, chat_history, user_mbti, api_key, base_url, model_name, provider):
     """
-    AI acts as a Life Coach specific to the user's MBTI type.
+    AI Life Coach provides personalized MBTI-based advice
     """
     system_prompt = f"""
-    You are an expert MBTI Life Coach. 
-    The user is: {user_mbti.upper()}.
-    
-    GOAL: Help them improve based on the strengths/weaknesses of {user_mbti}.
-    
-    INSTRUCTIONS:
-    1. If the user asks for advice, give 3 concrete, actionable tips.
-    2. If the user asks about a situation (e.g., "Job Interview", "First Date"), 
-       tell them exactly how an {user_mbti} should handle it to succeed.
-    3. Keep the tone encouraging but practical.
-    4. Keep answers concise (under 4 sentences).
-    5. Do NOT output JSON.
-    """
+You are an expert MBTI Life Coach specializing in {user_mbti.upper()}.
+
+Your role:
+- Provide actionable advice tailored to {user_mbti} strengths and weaknesses
+- Help them grow and overcome challenges
+- Be specific and practical
+- Keep responses under 5 sentences
+
+{user_mbti} Key Traits: Consider their natural tendencies when giving advice.
+"""
     
     messages = [{"role": "system", "content": system_prompt}]
-    
-    # Add recent history (Limit to 4 to keep it fast)
     for msg in chat_history[-4:]:
         messages.append({"role": msg["role"], "content": msg["content"]})
-        
     messages.append({"role": "user", "content": user_input})
     
-    ai_msg = call_ollama_api(messages, api_key, base_url, model_name)
-    return ai_msg.get('content', "I'm thinking of some advice...")
+    try:
+        ai_msg = call_llama_api(messages, api_key, base_url, model_name, provider=provider)
+        return ai_msg.get('content', "Let me think about that...")
+    except Exception as e:
+        return f"I'm having trouble generating advice. (Error: {str(e)})"
