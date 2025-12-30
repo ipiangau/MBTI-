@@ -1,4 +1,4 @@
-# 🎄 MBTI North Pole
+# 🎄 MBTI Analysis
 
 **Analyze personalities, one chat at a time!**
 
