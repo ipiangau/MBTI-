@@ -78,21 +78,47 @@ def construct_analysis_prompt(selected_speakers_data):
     { "results": [ { "name": "Name1", "mbti": "XXXX", "scores": [10, 20, 30, 40] } ] }
     """
     return system_prompt, conversation_sample
+
 def get_quiz_questions():
-    """Returns a list of 12 quick questions."""
+    """
+    Returns a list of 28 questions with English (txt_en) and Mandarin (txt_cn).
+    """
     return [
-        {"id": 1, "txt": "I feel energized after being around a lot of people.", "dim": "E", "rev": False},
-        {"id": 2, "txt": "I often get lost in my thoughts and ignore my surroundings.", "dim": "N", "rev": False},
-        {"id": 3, "txt": "I make decisions based on logic rather than feelings.", "dim": "T", "rev": False},
-        {"id": 4, "txt": "I like to have a detailed plan before I start a trip.", "dim": "J", "rev": False},
-        {"id": 5, "txt": "I prefer a quiet night in reading over a loud party.", "dim": "E", "rev": True}, # Introvert
-        {"id": 6, "txt": "I trust concrete facts more than abstract theories.", "dim": "N", "rev": True}, # Sensing
-        {"id": 7, "txt": "I am easily affected by other people's emotions.", "dim": "T", "rev": True}, # Feeling
-        {"id": 8, "txt": "I prefer to keep my options open rather than committing.", "dim": "J", "rev": True}, # Perceiving
-        {"id": 9, "txt": "I usually start conversations with strangers.", "dim": "E", "rev": False},
-        {"id": 10, "txt": "I think about the future more than the present.", "dim": "N", "rev": False},
-        {"id": 11, "txt": "Debates and intellectual arguments excite me.", "dim": "T", "rev": False},
-        {"id": 12, "txt": "I get stressed when things are disorganized.", "dim": "J", "rev": False},
+        # --- E vs I ---
+        {"id": 1, "txt_en": "You regularly make new friends.", "txt_cn": "你经常结交新朋友。", "dim": "E", "rev": False},
+        {"id": 2, "txt_en": "You feel comfortable starting a conversation with someone interesting.", "txt_cn": "你很容易跟陌生人开启话题。", "dim": "E", "rev": False},
+        {"id": 3, "txt_en": "You enjoy participating in group activities.", "txt_cn": "你喜欢参加团体活动。", "dim": "E", "rev": False},
+        {"id": 4, "txt_en": "You feel drained after being around a lot of people for a long time.", "txt_cn": "在人群中待久了你会感到精疲力尽。", "dim": "E", "rev": True},
+        {"id": 5, "txt_en": "You avoid making phone calls.", "txt_cn": "你尽量避免打电话。", "dim": "E", "rev": True},
+        {"id": 6, "txt_en": "You prefer to do your chores alone rather than with others.", "txt_cn": "你宁愿独自做事，也不愿与他人合作。", "dim": "E", "rev": True},
+        {"id": 7, "txt_en": "At social events, you rarely try to introduce yourself to new people.", "txt_cn": "在社交场合，你很少主动介绍自己。", "dim": "E", "rev": True},
+
+        # --- N vs S ---
+        {"id": 8, "txt_en": "You often get so lost in thoughts that you ignore your surroundings.", "txt_cn": "你经常沉浸在思考中而忽略周围环境。", "dim": "N", "rev": False},
+        {"id": 9, "txt_en": "You are intrigued by controversial or theoretical topics.", "txt_cn": "你对有争议或理论性的话题很感兴趣。", "dim": "N", "rev": False},
+        {"id": 10, "txt_en": "You enjoy thinking about complex, abstract theories.", "txt_cn": "你喜欢思考复杂抽象的理论。", "dim": "N", "rev": False},
+        {"id": 11, "txt_en": "You often think about 'what if' scenarios.", "txt_cn": "你经常思考“如果……会怎样”的情境。", "dim": "N", "rev": False},
+        {"id": 12, "txt_en": "You prefer to follow a schedule rather than do things spontaneously.", "txt_cn": "你更喜欢按计划行事，而不是随兴而为。", "dim": "N", "rev": True}, 
+        {"id": 13, "txt_en": "You trust concrete facts and data more than intuition.", "txt_cn": "相比直觉，你更相信具体的事实和数据。", "dim": "N", "rev": True}, 
+        {"id": 14, "txt_en": "You prefer practical solutions over creative concepts.", "txt_cn": "你更喜欢实用的解决方案，而不是创意概念。", "dim": "N", "rev": True}, 
+
+        # --- T vs F ---
+        {"id": 15, "txt_en": "You make decisions based on logic rather than feelings.", "txt_cn": "你做决定时更看重逻辑而非情感。", "dim": "T", "rev": False},
+        {"id": 16, "txt_en": "Efficiency is more important to you than being tactful.", "txt_cn": "对你来说，效率比圆滑更重要。", "dim": "T", "rev": False},
+        {"id": 17, "txt_en": "In a discussion, truth should be more important than people’s sensitivities.", "txt_cn": "讨论中，真相应该比别人的感受更重要。", "dim": "T", "rev": False},
+        {"id": 18, "txt_en": "You are easily affected by other people's emotions.", "txt_cn": "你很容易受到他人情绪的影响。", "dim": "T", "rev": True}, 
+        {"id": 19, "txt_en": "Your mood can change very quickly.", "txt_cn": "你的情绪变化很快。", "dim": "T", "rev": True}, 
+        {"id": 20, "txt_en": "You often follow your heart even if your head disagrees.", "txt_cn": "即使理智反对，你通常也会跟随内心。", "dim": "T", "rev": True}, 
+        {"id": 21, "txt_en": "It is difficult for you to relate to other people’s feelings.", "txt_cn": "你很难对他人的感受产生共鸣。", "dim": "T", "rev": False},
+
+        # --- J vs P ---
+        {"id": 22, "txt_en": "You like to have a detailed plan before you start a trip.", "txt_cn": "你喜欢在旅行前制定详细的计划。", "dim": "J", "rev": False},
+        {"id": 23, "txt_en": "You usually complete your work well before the deadline.", "txt_cn": "你通常会在截止日期前很久就完成工作。", "dim": "J", "rev": False},
+        {"id": 24, "txt_en": "You like to use organizing tools like schedules and lists.", "txt_cn": "你喜欢使用日程表和清单等整理工具。", "dim": "J", "rev": False},
+        {"id": 25, "txt_en": "You prefer to keep your options open rather than committing.", "txt_cn": "你更喜欢保留选择余地，而不是过早承诺。", "dim": "J", "rev": True}, 
+        {"id": 26, "txt_en": "You often leave things until the last possible minute.", "txt_cn": "你经常把事情拖到最后一刻才做。", "dim": "J", "rev": True}, 
+        {"id": 27, "txt_en": "You struggle with strict deadlines.", "txt_cn": "你对应付严格的截止日期感到吃力。", "dim": "J", "rev": True}, 
+        {"id": 28, "txt_en": "A cluttered workspace does not bother you.", "txt_cn": "凌乱的工作环境不会让你感到困扰。", "dim": "J", "rev": True}, 
     ]
 
 def calculate_quiz_result(answers):

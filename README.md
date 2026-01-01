@@ -13,7 +13,7 @@ A Streamlit-powered application that transforms your LINE chat history into deep
 
 ### 1. Clone the repository
 ```bash
-git clone [https://github.com/ipiangau/MBTI-](https://github.com/ipiangau/MBTI-)
+git clone https://github.com/ipiangau/MBTI-
 cd MBTI-
 ```
 ### 2. Install Dependencies
@@ -27,7 +27,7 @@ API_KEY=your-remote-api-key
 LOCAL_OLLAMA_URL="http://localhost:11434"
 OLLAMA_API_KEY=ollama 
 
-OPENAI_API_KEY=sk-...
+POLL_API_KEY=sk-...
 MAP_API_KEY=
 ```
 ### Usage
@@ -46,155 +46,46 @@ streamlit run app.py
 - Select the specific friends you want to analyze from the list
 - Click 🚀 Run Analysis
 ```
-#### 4. Explore:
-```bash
-- View the generated charts in the Visualizations tabs
-- Chat with the Elf agent below the results
-- Try asking: "What is [Name]'s fashion style?" or "Compare everyone's energy levels"
-```
+
 ### Project Structure
 ```bash
-app.py:
-  The main entry point. Handles the Streamlit UI, theme (CSS/Snowflakes), and session state management
-agent.py:
-  Handles logic for calling LLMs (Ollama/Remote), extracting strict JSON for analysis, and generating chat responses/fashion advice
-mbti.py:
-  Contains the parsing logic for LINE chat files (parse_line_chat_dynamic) and prompt engineering helpers
-charts.py:
-  Uses Plotly to generate the Spectrum, Bar, and Radar charts based on the analysis data
+MBTI-/
+├── README.md
+├── agent.py
+├── app.py       
+├── charts.py
+├── mbti.py  
+├── requirements.txt
+└── image/
 ```
 ### Technologies
 ```bash
 Remote NCKU API (for the LLM)
 Local Ollama API (alternative for the LLM)
-OpenAI API (for the Image Generation/Fashion tool)
-Goolgle Map API (for places recommendation)
+pollinations.ai (for the Image Generation)
+Google Map API (for places recommendation)
 ```
-<<<<<<< Updated upstream
-=======
 ### Flow Chart
-flowchart 
-    %% Define Styles
-    classDef user fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef system fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
-    classDef llm fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
-    classDef tool fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
-    classDef api fill:#ffebee,stroke:#c62828,stroke-width:2px;
-
-    %% Node
-    User([User / Streamlit UI])
-    Router{"Input Analysis<br/>(agent.py)"}
-    
-    %% Branch Decisions
-    CheckMap{"Has Location<br/>Keywords?"}
-    CheckChart{"Has Chart<br/>Keywords?"}
-    CheckFashion{"Has Fashion<br/>Keywords?"}
-    CheckImg{"Has Image<br/>Keywords?"}
-    
-    %% LLM Processing
-    LLM_Extract[LLM: JSON Extraction]
-    LLM_Chat[LLM: Chat Response]
-    LLM_Style[LLM: Style Advice]
-    
-    %% Tool && API
-    Tool_Map[Tool: Recommend Places]
-    Tool_Chart[Tool: Generate Charts]
-    Tool_GenImg[Tool: OpenAI Image Gen]
-    
-    API_Google[Google Maps API]
-    API_Ollama[Ollama / NCKU API]
-    API_OpenAI[OpenAI API]
-    
-    Output([Display Response / Chart / Image])
-
-    %% Apply Styles
-    class User,Output user;
-    class Router,CheckMap,CheckChart,CheckFashion,CheckImg system;
-    class LLM_Extract,LLM_Chat,LLM_Style llm;
-    class Tool_Map,Tool_Chart,Tool_GenImg tool;
-    class API_Google,API_Ollama,API_OpenAI api;
-
-    %% Connection Flow
-    User --> |Input Text| Router
-    Router --> CheckMap
-    
-    %% 1. Map Flow
-    CheckMap -- Yes --> LLM_Extract
-    LLM_Extract --> |Extract Intent/Loc| API_Ollama
-    API_Ollama --> Tool_Map
-    Tool_Map --> |Get Coordinates/Places| API_Google
-    API_Google --> Output
-    
-    %% 2. Chart Flow
-    CheckMap -- No --> CheckChart
-    CheckChart -- Yes --> Tool_Chart
-    Tool_Chart --> |Plotly Logic| Output
-    
-    %% 3. Fashion Flow
-    CheckChart -- No --> CheckFashion
-    CheckFashion -- Yes --> LLM_Style
-    LLM_Style --> |Get Prompt| API_Ollama
-    LLM_Style --> |Generate Visual| Tool_GenImg
-    Tool_GenImg --> API_OpenAI
-    API_OpenAI --> Output
-
-    %% 4. Image Flow
-    CheckFashion -- No --> CheckImg
-    CheckImg -- Yes --> Tool_GenImg
-    Tool_GenImg --> Output
-    
-    %% 5.Conversation Flow
-    CheckImg -- No --> LLM_Chat
-    LLM_Chat --> |Conversation| API_Ollama
-    API_Ollama --> Output
+![Flow Chart](./image/Flow.png)
 
 ### FSM
-stateDiagram
-    direction LR
+![FSM](./image/FSM.png)
 
-    %% Define Styles
-    classDef defaultStyle fill:#fff,stroke:#333,stroke-width:1px;
-    classDef active fill:#dcedc8,stroke:#558b2f,stroke-width:2px;
-
-    %% Entry Point
-    [*] --> Init
-    Init --> Analyze_Tab : Select Tab 1
-    Init --> Quiz_Tab : Select Tab 2
-    Init --> Growth_Tab : Select Tab 3
-
-    %% Tab 1: Chat Analyzer
-    state Analyze_Tab {
-        [*] --> Waiting_Upload
-        Waiting_Upload --> File_Parsed : Upload .txt
-        File_Parsed --> Analysis_Ready : Click 'Run Analysis'
-        Analysis_Ready --> Chat_Mode : LLM Returns JSON
-        Chat_Mode --> Chat_Mode : User Chat Loop
-    }
-
-    %% Tab 2: Personality Quiz
-    state Quiz_Tab {
-        [*] --> Taking_Quiz
-        Taking_Quiz --> Quiz_Calculated : Click 'Calculate Type'
-        Quiz_Calculated --> Interview_Mode : Show Results
-        Interview_Mode --> Interview_Mode : Chat Loop (Dr. Elf)
-        Interview_Mode --> Taking_Quiz : Click 'Retake Test'
-    }
-
-    %% Tab 3: Growth Coach
-    state Growth_Tab {
-        [*] --> Input_MBTI
-        Input_MBTI --> Coaching_Session : Click 'Start Coaching'
-        Coaching_Session --> Coaching_Session : Chat Loop (Advice)
-        Coaching_Session --> Input_MBTI : Click 'Change Type'
-    }
-
-    %% Tab Switching Transitions
-    Analyze_Tab --> Quiz_Tab : Switch Tab
-    Quiz_Tab --> Growth_Tab : Switch Tab
-    Growth_Tab --> Analyze_Tab : Switch Tab
-
-    %% Apply Styles
-    class Analyze_Tab active
-    class Quiz_Tab active
-    class Growth_Tab active
->>>>>>> Stashed changes
+### Description
+```bash
+Tab 1: Chat Analysis (Group Chat)
+  - Upload a .txt chat history file (LINE/WhatsApp format). The tool automatically detects distinct speakers
+  - Select specific participants to analyze. The AI examines their tone, vocabulary, and interaction patterns to estimate their MBTI personality type
+  - Chat with Data: ask specific questions about the analysis or generate metaphorical art representing the group dynamic or generate interactive charts or get a recommendation of meeting point
+  ![chart](./image/charts.png)
+Tab 2: Self-Discovery (MBTI Test)
+  - Answer 28 questions
+  - Calculates scores across the four dimensions (E/I, S/N, T/F, J/P) and reveals the final MBTI type.
+  - Discuss the results, validate the findings, and explore personal strengths/weaknesses
+  ![show](./image/show.png)
+Tab 3: Personal Growth Coach
+  - Users input their MBTI type
+  - Provides tailored advice on career, relationships, place recommendation, and habits based on the cognitive functions of that specific type
+  - Users can request motivational visualizations (e.g., "Show me an image of an INFP overcoming procrastination") which are generated on the fly
+  ![recommend](./image/place%20recommend.png)
+```

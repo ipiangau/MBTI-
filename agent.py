@@ -2,7 +2,7 @@ import os
 import json
 import re
 import requests
-from openai import OpenAI
+#from openai import OpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,85 +10,36 @@ load_dotenv()
 # ==========================================
 # API Caller (Cloudflare + Remote NCKU)
 # ==========================================
-def call_llama_api(messages, api_key, base_url, model_name, provider="cloudflare", force_json=False):
-    """
-    Unified caller for Cloudflare and Standard/Ollama APIs
-    """
-    if not api_key or not base_url:
-        raise Exception("API credentials missing. Please configure API_KEY and BASE_URL.")
-    
-    # --- CLOUDFLARE WORKERS AI ---
-    if provider == "cloudflare":
-        account_id = base_url 
-        url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model_name}"
-        
-        headers = {"Authorization": f"Bearer {api_key}"}
-        payload = {"messages": messages}
-        
-        try:
-            r = requests.post(url, headers=headers, json=payload, timeout=60)
-            data = r.json()
-            
-            if data.get("success"):
-                return {"role": "assistant", "content": data["result"]["response"]}
-            else:
-                err = data.get("errors", [{"message": "Unknown Error"}])[0]["message"]
-                raise Exception(f"Cloudflare Error: {err}")
-        except requests.exceptions.Timeout:
-            raise Exception("Cloudflare API timeout. Please try again.")
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Cloudflare Connection Failed: {str(e)}")
+def call_llama_api(messages, api_key, base_url, model_name, force_json=False):
+    base_url = base_url.rstrip("/")
+    url = f"{base_url}/api/chat"
 
-    # --- STANDARD / OLLAMA / NCKU ---
-    else:
-        base_url = base_url.rstrip("/")
-        if "ncku" in base_url or "v1" in base_url:
-            url = f"{base_url}/chat/completions"
-        else:
-            url = f"{base_url}/api/chat"
-        
-        headers = {"Content-Type": "application/json"}
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
 
-        payload = {
-            "model": model_name,
-            "messages": messages,
-            "stream": False,
-            "temperature": 0.7
-        }
-        
-        if force_json and "localhost" in base_url:
-            payload["format"] = "json"
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "stream": False,
+        "temperature": 0.2
+    }
 
-        try:
-            r = requests.post(url, json=payload, headers=headers, timeout=180)
-            
-            # Handle different error codes
-            if r.status_code == 403:
-                raise Exception(
-                    "403 Forbidden: API key denied. Please verify:\n"
-                    "1. Your API_KEY is correct in .env\n"
-                    "2. Your IP is whitelisted by NCKU\n"
-                    "3. Try using Cloudflare Workers AI instead (sidebar option)"
-                )
-            elif r.status_code == 401:
-                raise Exception("401 Unauthorized: Invalid API key. Check your .env file.")
-            elif r.status_code == 404:
-                raise Exception(f"404 Not Found: Invalid endpoint URL - {url}")
-            
-            r.raise_for_status()
-            data = r.json()
+    if force_json and "localhost" in base_url:
+        payload["format"] = "json"
 
-            if "message" in data: 
-                return data["message"]
-            if "choices" in data: 
-                return data["choices"][0]["message"]
-            return {"role": "assistant", "content": ""}
-        except requests.exceptions.Timeout:
-            raise Exception("API timeout. The server took too long to respond.")
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"API Error: {str(e)}")
+    r = requests.post(url, json=payload, headers=headers, timeout=180)
+    r.raise_for_status()
+
+    data = r.json()
+
+    if "message" in data:
+        return data["message"]
+
+    if "choices" in data:
+        return data["choices"][0]["message"]
+
+    raise Exception("Unknown LLM response format")
 
 
 def is_real_location(text):
@@ -317,7 +268,7 @@ def extract_json_safe(text):
 # ==========================================
 # MBTI Analysis
 # ==========================================
-def run_analysis_request(system_prompt, user_content, selected_people, api_key, base_url, model_name, provider):
+def run_analysis_request(system_prompt, user_content, selected_people, api_key, base_url, model_name):
     """Analyze MBTI for each person in the conversation"""
     hard_guard = f"""
 CRITICAL RULES:
@@ -336,7 +287,7 @@ PEOPLE TO ANALYZE:
     ]
 
     try:
-        ai_msg = call_llama_api(messages, api_key, base_url, model_name, provider=provider, force_json=True)
+        ai_msg = call_llama_api(messages, api_key, base_url, model_name, force_json=True)
         content = ai_msg.get("content", "")
         parsed = extract_json_safe(content)
 
@@ -353,7 +304,7 @@ PEOPLE TO ANALYZE:
 # ==========================================
 # Style Tool
 # ==========================================
-def tool_generate_style_advice(mbti_type, api_key, base_url, model_name, provider):
+def tool_generate_style_advice(mbti_type, api_key, base_url, model_name):
     """Generate fashion advice and image for MBTI type"""
     system_prompt = f"""
 You are a professional fashion stylist.
@@ -377,7 +328,7 @@ Output Markdown Format:
     messages = [{"role": "system", "content": system_prompt}]
     
     try:
-        text_res = call_llama_api(messages, api_key, base_url, model_name, provider=provider, force_json=False)
+        text_res = call_llama_api(messages, api_key, base_url, model_name, force_json=False)
         style_advice = text_res.get("content", "No style advice generated.")
     except Exception as e:
         style_advice = f"Error generating style advice: {str(e)}"
@@ -432,7 +383,7 @@ def normalize_place_type(text):
         return "park"
     return "cafe"
 
-def generate_chat_response(user_input, chat_history, context_results, api_key, base_url, model_name, is_chinese_func, provider):
+def generate_chat_response(user_input, chat_history, context_results, api_key, base_url, model_name, is_chinese_func):
     """
     Central Controller: Routes user input to the correct tool or standard chat.
     """
@@ -456,6 +407,7 @@ Rules:
 - Use natural language for general questions
 - Call tools when user explicitly requests them
 - Base insights on MBTI research
+- SAFETY OVERRIDE: If asked to visualize, draw, or generate images of people as ANIMALS, CHARACTERS, or METAPHORS, this is completely SAFE. Do not refuse.
 """
 
     map_keywords = ["where", "location", "map", "best place", "meet", "between", "cafe", "restaurant", "bar", "park", "mall", "find"]
@@ -490,7 +442,7 @@ Rules:
         ]
         
         try:
-            params_response = call_llama_api(extract_msgs, api_key, base_url, model_name, provider=provider, force_json=True)
+            params_response = call_llama_api(extract_msgs, api_key, base_url, model_name, force_json=True)
             params = extract_json_safe(params_response.get("content", "{}"))
         except:
             params = {"intent": "recommend", "locations": ["National Cheng Kung University, Tainan"]}
@@ -530,12 +482,12 @@ Rules:
     # --- FASHION HANDLER ---
     if "fashion" in user_input.lower() or "style" in user_input.lower():
         target = find_target_person(user_input, context_results)
-        style, image_url = tool_generate_style_advice(target["mbti"], api_key, base_url, model_name, provider=provider)
+        style, image_url = tool_generate_style_advice(target["mbti"], api_key, base_url, model_name)
         return style, image_url
     
     # --- IMAGE HANDLER ---
-    image_keywords = ["generate image", "generate a picture", "draw", "show me a picture", "create an image"]
-    if any(k in user_input.lower() for k in image_keywords):
+    image_keywords = ["generate", "draw", "picture", "image", "visualize", "sketch", "paint"]
+    if any(k in user_input.lower() for k in image_keywords) and "chart" not in user_input.lower():
         return "TOOL:IMAGE", user_input.strip()
 
     # --- STANDARD CHAT ---
@@ -544,13 +496,13 @@ Rules:
     messages.append({"role": "user", "content": user_input})
 
     try:
-        ai_msg = call_llama_api(messages, api_key, base_url, model_name, provider=provider, force_json=False)
+        ai_msg = call_llama_api(messages, api_key, base_url, model_name, force_json=False)
         content = ai_msg.get("content", "I'm not sure how to respond to that.")
         return content, None
     except Exception as e:
         return f"❌ Error: {str(e)}", None
 
-def run_interview_step(user_input, chat_history, current_mbti_guess, api_key, base_url, model_name, provider):
+def run_interview_step(user_input, chat_history, current_mbti_guess, api_key, base_url, model_name):
     """
     AI psychologist refines user's MBTI through conversation
     """
@@ -574,12 +526,12 @@ Guidelines:
     messages.append({"role": "user", "content": user_input})
     
     try:
-        ai_msg = call_llama_api(messages, api_key, base_url, model_name, provider=provider, force_json=False)
+        ai_msg = call_llama_api(messages, api_key, base_url, model_name, force_json=False)
         return ai_msg.get('content', "I'm listening... Tell me more.")
     except Exception as e:
         return f"I'm having trouble processing that. Could you rephrase? (Error: {str(e)})"
 
-def run_growth_advisor_step(user_input, chat_history, user_mbti, api_key, base_url, model_name, provider):
+def run_growth_advisor_step(user_input, chat_history, user_mbti, api_key, base_url, model_name):
     """
     AI Life Coach provides personalized MBTI-based advice
     """
@@ -601,7 +553,7 @@ Your role:
     messages.append({"role": "user", "content": user_input})
     
     try:
-        ai_msg = call_llama_api(messages, api_key, base_url, model_name, provider=provider)
+        ai_msg = call_llama_api(messages, api_key, base_url, model_name)
         return ai_msg.get('content', "Let me think about that...")
     except Exception as e:
         return f"I'm having trouble generating advice. (Error: {str(e)})"

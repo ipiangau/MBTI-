@@ -2,3 +2,8 @@ requests
 python-dotenv
 streamlit
 plotly
+os
+json
+re
+urllib.parse
+random
