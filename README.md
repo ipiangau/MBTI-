@@ -76,16 +76,23 @@ Google Map API (for places recommendation)
 Tab 1: Chat Analysis (Group Chat)
   - Upload a .txt chat history file (LINE/WhatsApp format). The tool automatically detects distinct speakers
   - Select specific participants to analyze. The AI examines their tone, vocabulary, and interaction patterns to estimate their MBTI personality type
-  - Chat with Data: ask specific questions about the analysis or generate metaphorical art representing the group dynamic or generate interactive charts or get a recommendation of meeting point
-  ![chart](./image/charts.png)
+  - Chat with Data: ask specific questions about the analysis or generate metaphorical art representing the group dynamic or generate interactive charts or get a recommendation of meeting point 
+```
+#### ex.chart
+![ex.chart](./image/charts.png)
+```bash
 Tab 2: Self-Discovery (MBTI Test)
   - Answer 28 questions
   - Calculates scores across the four dimensions (E/I, S/N, T/F, J/P) and reveals the final MBTI type.
   - Discuss the results, validate the findings, and explore personal strengths/weaknesses
-  ![show](./image/show.png)
+```
+#### ex.MBTI result
+![MBTI result](./image/show.png)
+```bash
 Tab 3: Personal Growth Coach
   - Users input their MBTI type
   - Provides tailored advice on career, relationships, place recommendation, and habits based on the cognitive functions of that specific type
   - Users can request motivational visualizations (e.g., "Show me an image of an INFP overcoming procrastination") which are generated on the fly
-  ![recommend](./image/place%20recommend.png)
 ```
+#### ex.Place recommendation
+![Place recommendation](./image/place%20recommend.png)
