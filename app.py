@@ -73,7 +73,7 @@ def set_cute_theme():
 set_cute_theme()
 
 # ==========================================
-# Sidebar Settings
+# Sidebar Setting
 # ==========================================
 with st.sidebar:
     st.image([
