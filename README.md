@@ -66,7 +66,7 @@ pollinations.ai (for the Image Generation)
 Google Map API (for places recommendation)
 ```
 ### Flow Chart
-![Flow Chart](./image/Flow.png)
+![Flow Chart](./image/Flow.jpg)
 
 ### FSM
 ![FSM](./image/FSM.png)
