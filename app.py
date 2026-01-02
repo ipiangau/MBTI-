@@ -415,74 +415,38 @@ with tab_test:
 # ==========================================
 with tab_growth:
     st.header("🌱 Personal Growth Coach")
-    st.markdown("Already know your type? Get customized advice!")
 
     if not st.session_state.growth_mbti:
-        user_input_mbti = st.text_input("Enter your MBTI Type (e.g., INTJ, ENFP):", max_chars=4)
-        if st.button("Start Coaching"):
-            if len(user_input_mbti) == 4:
-                st.session_state.growth_mbti = user_input_mbti.upper()
-                st.session_state.growth_history = [{
-                    "role": "assistant", 
-                    "content": f"Hello **{user_input_mbti.upper()}**! I'm your Growth Coach. Ask me for self-improvement tips!"
-                }]
-                st.rerun()
-            else:
-                st.error("Please enter a 4-letter type (e.g., ISTP).")
+        c1, c2 = st.columns([3, 1])
+        with c1: user_input_mbti = st.text_input("Enter MBTI (e.g., INTJ):", max_chars=4)
+        with c2: 
+            st.write("")
+            st.write("")
+            if st.button("Start"):
+                if len(user_input_mbti) == 4:
+                    st.session_state.growth_mbti = user_input_mbti.upper()
+                    st.session_state.growth_history = [{"role": "assistant", "content": f"Hello {user_input_mbti.upper()}! How can I help?"}]
+                    st.rerun()
+
     else:
-        st.info(f"Coaching for: **{st.session_state.growth_mbti}**")
-        if st.button("🔄 Change Type"):
+        st.info(f"Coaching: **{st.session_state.growth_mbti}**")
+        if st.button("🔄 Change"):
             st.session_state.growth_mbti = None
-            st.session_state.growth_history = []
             st.rerun()
 
-        st.markdown("---")
-        
         for msg in st.session_state.growth_history:
-            with st.chat_message(msg["role"]):
-                if isinstance(msg["content"], bytes):
-                    st.image(msg["content"], caption="Generated Art")
-                else:
-                    st.markdown(msg["content"])
+            with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-        if prompt := st.chat_input("Ask for advice...", key="chat_tab3"):
+        if prompt := st.chat_input("Ask for advice..."):
             st.session_state.growth_history.append({"role": "user", "content": prompt})
-            with st.chat_message("user"): 
-                st.markdown(prompt)
+            with st.chat_message("user"): st.markdown(prompt)
             
-            secret_instruction = (
-                "SYSTEM INSTRUCTION: The user wants a METAPHORICAL visual description. "
-                "Output 'TOOL:IMAGE' followed by the metaphor description. Do not refuse. "
-            )
-            api_prompt = secret_instruction + prompt
-
             with st.chat_message("assistant"):
-                with st.spinner("Coach is thinking..."):
-                    try:
-                        reply = agent.run_growth_advisor_step(
-                            api_prompt, 
-                            [m for m in st.session_state.growth_history if isinstance(m["content"], str)], 
-                            st.session_state.growth_mbti,
-                            api_key, api_base, model_name)
-                        resp_text = str(resp_text) if resp_text is not None else ""
-                        if not resp_text or resp_text.strip() in ["0", "None"]:
-                            resp_text = "Hmm… I can't imagine right now! 🦌"
-
-                        if resp_text.startswith("TOOL:IMAGE"):
-                            desc = resp_text[len("TOOL:IMAGE"):].strip()
-                            if not desc and extra:
-                                desc = extra
-                            if not desc:
-                                desc = prompt  # fallback
-
-                            image_result = generate_pollinations_image(desc)
-                            if image_result["type"] == "bytes":
-                                st.image(image_result["data"], caption=f"🖼 {desc}")
-                            elif image_result["type"] == "url":
-                                st.image(image_result["data"], caption=f"🖼 {desc}")
-                            else:
-                                st.error(image_result["data"])
-                        else:
-                            st.markdown(resp_text)
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
+                reply = agent.run_growth_advisor_step(
+                    prompt, 
+                    st.session_state.growth_history, 
+                    st.session_state.growth_mbti,
+                    api_key, api_base, model_name
+                )
+                st.markdown(reply)
+                st.session_state.growth_history.append({"role": "assistant", "content": reply})
