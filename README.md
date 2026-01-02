@@ -73,6 +73,7 @@ Google Map API (for places recommendation)
 
 ### Description
 ```bash
+This MBTI analysis is applicable in both English and Mandarin
 Tab 1: Chat Analysis (Group Chat)
   - Upload a .txt chat history file (LINE/WhatsApp format). The tool automatically detects distinct speakers
   - Select specific participants to analyze. The AI examines their tone, vocabulary, and interaction patterns to estimate their MBTI personality type
